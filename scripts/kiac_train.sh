@@ -1,24 +1,27 @@
 #!/bin/bash
-# Parameterized SLURM launcher for payload-transport training on KIAC.
-#
-# One script can launch many configurations and pin each to a specific commit.
-# That matters for a sweep whose results are reviewed later: without a recorded
-# commit there is no way to tell which code produced which curve.
+# SLURM launcher for payload-transport training on KIAC.
 #
 # Usage:
-#   sbatch --job-name=<name> scripts/kiac_train.sh <RUN_NAME> <GIT_REF> [extra args...]
+#   sbatch --job-name=<name> scripts/kiac_train.sh <RUN_NAME> [extra args...]
 #
 # Example:
-#   sbatch scripts/kiac_train.sh baseline a3d190f
-#   sbatch scripts/kiac_train.sh wide_kernel a3d190f --agent.algorithm.learning-rate 1e-3
+#   sbatch --job-name=pd_baseline scripts/kiac_train.sh baseline \
+#     --agent.algorithm.learning-rate 1e-3
 #
-# The run gets its own checkout under $WORKDIR/runs/<RUN_NAME>, so concurrent
-# jobs never share a working tree or a .venv.
+# Runs from the submitting checkout directly. payload-drones is self-contained
+# now that the mj-adapt-drones surface is vendored, so there is no external
+# checkout to locate and no pyproject to rewrite. There is also no reason to
+# clone per run: mjlab keys its outputs by --agent.experiment-name, unique per
+# run, so concurrent jobs read the tree without writing to it. The earlier
+# per-run clone plus `uv sync` cost four identical ~8 GB syncs for no benefit.
+#
+# The commit is recorded in the log rather than passed in. Sweeps get reviewed
+# hours later, and a curve with no provenance is not evidence.
 
 #SBATCH --partition=ada
 #SBATCH --gres=gpu:1
 #SBATCH --exclude=cn9        # old NVIDIA driver (CUDA 12.2): mujoco_warp loses CUDA graphs
-#SBATCH --time=2-00:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=64G
 #SBATCH --cpus-per-task=8
 #SBATCH --output=logs/%x_%j.out
@@ -26,40 +29,25 @@
 
 set -euo pipefail
 
-RUN_NAME="${1:?usage: kiac_train.sh <RUN_NAME> <GIT_REF> [extra args...]}"
-GIT_REF="${2:?usage: kiac_train.sh <RUN_NAME> <GIT_REF> [extra args...]}"
-shift 2
+RUN_NAME="${1:?usage: kiac_train.sh <RUN_NAME> [extra args...]}"
+shift
 EXTRA_ARGS=("$@")
 
-REPO_URL="https://github.com/varadVaidya/payload-drones.git"
-WORKDIR="$HOME/robotics/payload-runs"
-RUN_DIR="$WORKDIR/$RUN_NAME"
-
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
 source ~/.local/bin/env
 export PYTHONUNBUFFERED=1
 export GIT_PYTHON_REFRESH=quiet
 
 echo "=========================================================="
-echo "run          : $RUN_NAME"
-echo "git ref      : $GIT_REF"
-echo "extra args   : ${EXTRA_ARGS[*]:-<none>}"
-echo "node         : $(hostname)"
-echo "gpu          : $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)"
-echo "started      : $(date -Is)"
+echo "run        : $RUN_NAME"
+echo "commit     : $(git log --oneline -1)"
+echo "extra args : ${EXTRA_ARGS[*]:-<none>}"
+echo "node       : $(hostname)"
+echo "gpu        : $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)"
+echo "started    : $(date -Is)"
 echo "=========================================================="
 
-mkdir -p "$WORKDIR"
-if [ ! -d "$RUN_DIR/.git" ]; then
-  git clone --quiet "$REPO_URL" "$RUN_DIR"
-fi
-cd "$RUN_DIR"
-git fetch --quiet origin
-git checkout --quiet --detach "$GIT_REF"
-echo "checked out  : $(git log --oneline -1)"
-
-uv sync --quiet
-echo "python       : $(uv run --no-sync python -V 2>&1)"
-uv run --no-sync python -c "import torch; print('torch        :', torch.__version__, '| cuda', torch.cuda.is_available())"
+uv run --no-sync python -c "import torch; print('torch      :', torch.__version__, '| cuda', torch.cuda.is_available())"
 
 echo "----------------------------------------------------------"
 uv run --no-sync train Mjlab-PayloadTransport-RMA-Phase1 \
@@ -69,5 +57,5 @@ uv run --no-sync train Mjlab-PayloadTransport-RMA-Phase1 \
   "${EXTRA_ARGS[@]}"
 
 echo "=========================================================="
-echo "finished     : $(date -Is)"
+echo "finished   : $(date -Is)"
 echo "=========================================================="
