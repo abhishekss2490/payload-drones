@@ -88,8 +88,10 @@ intentionally inert; the flag records the inherited value exactly.
 
 Falsification: aggressive PPO matches or beats baseline on deterministic
 survival, position RMSE, collision fraction per completed episode, action
-saturation, and curriculum progress without excessive joint KL or clip
-fraction.
+saturation, curriculum progress, and finite value/surrogate losses.  Because
+the installed runner does not emit KL or clip fraction, do not make a decision
+from unavailable diagnostics; for the adaptive baseline, the learning-rate
+trajectory records whether KL feedback repeatedly drove it to the floor.
 
 ## 4. No hover warm-up (`no_hover`)
 
@@ -121,8 +123,31 @@ same fixed team/trajectory set.  Review:
 - position RMSE and 95th percentile, velocity error, and attitude error;
 - minimum inter-quad separation and actual quad--quad contacts;
 - action mean, learned standard deviation, and saturation;
-- joint KL, PPO clip fraction, and critic explained variance;
+- value/surrogate losses and the adaptive learning-rate trajectory (the
+  installed runner does not log joint KL, clip fraction, or explained variance);
 - sampled `rho`, hover-episode fraction, and per-bin curriculum ceilings.
 
 The submission gate is common to all runs: if collision fraction rises while
 episode length falls in the short sanity run, do not submit the sweep.
+
+## Preflight result (2026-07-22)
+
+A 35-iteration, 64-environment CPU sanity run completed 573,440 environment
+steps after increasing `njmax` to 512.  Comparing the first and last five
+logged values:
+
+| Metric | First-five mean | Last-five mean |
+| --- | ---: | ---: |
+| episode length (steps) | 72.148 | 81.496 |
+| payload position error (m) | 0.685 | 0.738 |
+| quad--quad contact termination | 0.154 | 0.074 |
+| payload-ground contact termination | 0.349 | 0.318 |
+| quad-ground contact termination | 0.382 | 0.488 |
+| tumbling termination | 0.645 | 0.582 |
+
+Termination metrics can overlap on a terminal step and therefore do not sum
+to one.  `payload_far_from_goal` remained about 0.001, while timeouts,
+cable-overextension, and NaN termination were all zero.  The submission gate
+passes: collision termination fell while episode length rose.  Position error
+did not improve in this deliberately under-powered preflight, so it is not
+evidence that the tracking task is learned.
