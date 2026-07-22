@@ -1,0 +1,34 @@
+<mujoco model="Quad">
+    <compiler autolimits="true"/>
+    <option integrator="Euler"/>
+    <visual><headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/></visual>
+    <worldbody>
+        <body name="quad" pos="0 0 0.1" quat="1 0 0 0">
+            <inertial mass="0.792" diaginertia="0.0047 0.005 0.0074" pos="0 0 0"/>
+            <joint name="root" type="free" damping="0" armature="0" pos="0 0 0" limited="false"/>
+            <geom name="quad_geom" type="box" pos="0 0 0" size=".04 .04 .02" rgba=".3 .3 .8 1"/>
+            <geom name="arm_front_left" type="box" pos=".07 .07 0" size=".05 .005 .005" quat=".924 0 0 .383" rgba=".3 .3 .8 1"/>
+            <geom name="arm_front_right" type="box" pos=".07 -.07 0" size=".05 .005 .005" quat=".383 0 0 .924" rgba=".3 .3 .8 1"/>
+            <geom name="arm_back_right" type="box" pos="-.07 -.07 0" size=".05 .005 .005" quat="-.383 0 0 .924" rgba=".3 .3 .8 1"/>
+            <geom name="arm_back_left" type="box" pos="-.07 .07 0" size=".05 .005 .005" quat=".924 0 0 -.383" rgba=".3 .3 .8 1"/>
+            <site name="motor_front_left" type="cylinder" pos=".1 .1 .0075" size=".01 .0025" rgba=".3 .8 .3 1"/>
+            <site name="motor_front_right" type="cylinder" pos=".1 -.1 .0075" size=".01 .0025" rgba=".3 .8 .3 1"/>
+            <site name="motor_back_right" type="cylinder" pos="-.1 -.1 .0075" size=".01 .0025" rgba=".3 .8 .3 1"/>
+            <site name="motor_back_left" type="cylinder" pos="-.1 .1 .0075" size=".01 .0025" rgba=".3 .8 .3 1"/>
+            <site name="thrust_com" type="cylinder" pos="0 0 0"/>
+            <site name="imu" pos="0 0 .02"/>
+            <!-- Added locally: cable connection below the vehicle CoM. -->
+            <site name="hook" type="sphere" pos="0 0 -0.10" size="0.012" rgba="1 .8 .1 1"/>
+            <geom name="thruster_front_left" type="cylinder" pos=".1 .1 .0075" size=".05 .0025" rgba=".3 .8 .3 .6"/>
+            <geom name="thruster_front_right" type="cylinder" pos=".1 -.1 .0075" size=".05 .0025" rgba=".3 .8 .3 .6"/>
+            <geom name="thruster_back_right" type="cylinder" pos="-.1 -.1 .0075" size=".05 .0025" rgba=".3 .8 .3 .6"/>
+            <geom name="thruster_back_left" type="cylinder" pos="-.1 .1 .0075" size=".05 .0025" rgba=".3 .8 .3 .6"/>
+        </body>
+    </worldbody>
+    <actuator>
+        <general dyntype="filter" dynprm="0.02" gainprm="1" biastype="none" gear="0 0 1 0 0 -0.01" site="motor_front_left" name="motor_front_left" ctrlrange="0 5.83"/>
+        <general dyntype="filter" dynprm="0.02" gainprm="1" biastype="none" gear="0 0 1 0 0 0.01" site="motor_front_right" name="motor_front_right" ctrlrange="0 5.83"/>
+        <general dyntype="filter" dynprm="0.02" gainprm="1" biastype="none" gear="0 0 1 0 0 -0.01" site="motor_back_right" name="motor_back_right" ctrlrange="0 5.83"/>
+        <general dyntype="filter" dynprm="0.02" gainprm="1" biastype="none" gear="0 0 1 0 0 0.01" site="motor_back_left" name="motor_back_left" ctrlrange="0 5.83"/>
+    </actuator>
+</mujoco>

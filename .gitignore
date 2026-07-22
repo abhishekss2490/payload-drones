@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local agent and diagnostic state
+.agents/
+.aris/
+.claude/
+.codex/
+.diag.txt
