@@ -17,6 +17,9 @@ dependencies = [
 requires = ["uv_build>=0.8.15,<0.9.0"]
 build-backend = "uv_build"
 
+[project.entry-points."mjlab.tasks"]
+payload_drones = "payload_drones.config"
+
 [tool.uv.sources]
 mj-adapt-drones = { path = "/scratch/robotics/mj-adapt-drones", editable = true }
 torch = { index = "pytorch-cu129" }

@@ -40,18 +40,35 @@ def make_payload_env_cfg(
     p_failure: float = 0.0,
     trajectory_enabled: bool = True,
     max_payload_speed: float = 1.5,
+    include_history: bool = False,
+    include_team_probe: bool = True,
     play: bool = False,
 ) -> ManagerBasedRlEnvCfg:
-    """Build the fixed-three-agent environment; default failure is evaluation-off."""
+    """Build the fixed-three-agent environment; default failure is evaluation-off.
+
+    ``include_history`` gates the 6300-dim ``agent_history`` group, mirroring the
+    base repo's ``make_quadrotor_env_cfg(include_history=...)``. It is the input
+    to the Phase 2 adaptation module and is **unused by the Phase 1 teacher**,
+    which reads privileged ``agent_dynamics`` instead. Leaving it on during
+    Phase 1 puts it in the PPO rollout buffer, where it is 80 % of the stored
+    observation payload: at 8192 envs x 256 steps that is 49.22 GiB of dead
+    weight and an immediate CUDA OOM on a 15.6 GiB card.
+
+    ``include_team_probe`` gates the analysis-only tension/thrust channel. It is
+    never read by any network, so training configs should switch it off; keep it
+    on for evaluation runs that measure H1/H2.
+    """
     scale_cfg = ScaleCfg() if scale_cfg is None else scale_cfg
     observations = {
         "policy": policy_group,
         "agent_dynamics": agent_dynamics_group,
-        "agent_history": agent_history_group,
         "critic": critic_group,
-        "team_probe": team_probe_group,
         "payload_trajectory": payload_trajectory_group,
     }
+    if include_history:
+        observations["agent_history"] = agent_history_group
+    if include_team_probe:
+        observations["team_probe"] = team_probe_group
     if play:
         for group in observations.values():
             group.enable_corruption = False

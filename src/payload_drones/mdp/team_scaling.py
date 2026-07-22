@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import torch
 
 from mjlab.envs import ManagerBasedRlEnv
+from mjlab.managers.event_manager import RecomputeLevel, requires_model_fields
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from mj_adapt_drones.mdp.quad_scaling import (
@@ -18,6 +19,10 @@ from mj_adapt_drones.mdp.quad_scaling import (
 
 N_AGENTS = 3
 GRAVITY = 9.81
+MAX_CABLE_STIFFNESS = 2_000.0
+MAX_CABLE_DAMPING = 80.0
+CABLE_STIFFNESS_SAFETY = 0.25
+CABLE_DAMPING_SAFETY = 0.5
 
 
 @dataclass
@@ -54,6 +59,25 @@ def _ids(env: ManagerBasedRlEnv, env_ids: torch.Tensor | None) -> torch.Tensor:
     return torch.arange(env.num_envs, device=env.device) if env_ids is None else env_ids
 
 
+@requires_model_fields(
+    # The base event is called from this wrapper, so its metadata is not visible
+    # to EventManager. Repeat the complete contract here: EventManager expands
+    # only fields advertised by *registered* event functions, before reset-time
+    # writes begin.
+    "body_mass",
+    "body_ipos",
+    "body_inertia",
+    "body_iquat",
+    "site_pos",
+    "actuator_gear",
+    "actuator_dynprm",
+    "actuator_ctrlrange",
+    "tendon_lengthspring",
+    "tendon_range",
+    "tendon_stiffness",
+    "tendon_damping",
+    recompute=RecomputeLevel.set_const,
+)
 def team_dynamics_randomization(
     env: ManagerBasedRlEnv,
     env_ids: torch.Tensor | None,
@@ -107,6 +131,22 @@ def team_dynamics_randomization(
     # terms always use team_state and therefore never confuse it with agent zero.
     env.quad_state = team.agents[0]
 
+    # A fixed 2000 N/m, 80 N.s/m cable is stable when its effective mass is the
+    # 0.75 kg scaffold payload, but it launches the smallest randomized 21 g
+    # quad in explicit Euler. Scale to the lightest member of each team so the
+    # spring and damping stability ratios stay bounded across the 40x mass range.
+    # The scene defaults remain ceilings for sufficiently heavy teams.
+    min_quad_mass = torch.stack([agent.mass[ids] for agent in team.agents], dim=1).amin(dim=1)
+    dt = env.physics_dt
+    cable_stiffness = torch.minimum(
+        torch.full_like(min_quad_mass, MAX_CABLE_STIFFNESS),
+        CABLE_STIFFNESS_SAFETY * min_quad_mass / (dt * dt),
+    )
+    cable_damping = torch.minimum(
+        torch.full_like(min_quad_mass, MAX_CABLE_DAMPING),
+        CABLE_DAMPING_SAFETY * min_quad_mass / dt,
+    )
+
     payload_cfg = payload_asset_cfg
     payload_cfg.resolve(env.scene)
     # A cfg selecting all bodies deliberately retains ``slice(None)`` after
@@ -154,6 +194,12 @@ def team_dynamics_randomization(
     # fields in mujoco-warp.  The upper endpoint is the cable rest length.
     env.sim.model.tendon_lengthspring[e, t, 1] = length
     env.sim.model.tendon_range[e, t, 1] = length
+    # mujoco-warp model tensors do not support two advanced-index axes with a
+    # per-row RHS reliably: that silently replicated one environment's value
+    # across the batch. Assign one tendon column at a time instead.
+    for cable_id in cable_ids:
+        env.sim.model.tendon_stiffness[ids, cable_id] = cable_stiffness
+        env.sim.model.tendon_damping[ids, cable_id] = cable_damping
     team.cable_length[ids] = length
     team.active_mask[ids] = True
 
