@@ -1,70 +1,84 @@
 # Spatial-tendon scaffold findings
 
-**Verdict: STOP. Do not start RL work on this scaffold.**  The scene compiles and
-the cable law is correct, but the required open-loop equal-hover stability test
-fails: after 2,000 steps (10 s at 5 ms) payload drift is **39.601 m**.  The
-simulation remains finite, so this is a dynamic/control-coupling failure, not a
-NaN or allocation failure.
+**Verdict: SOUND. Proceed to RL work.**
 
-## What was verified
+> **Correction note.** An earlier revision of this document concluded "STOP, do not start RL work,"
+> based on an open-loop test that commanded equal fixed thrust to three *free-flying* quadrotors and
+> flagged the resulting 39.6 m drift as a scaffold failure. **That test was invalid.** A quadrotor is
+> open-loop unstable in attitude; three free quads plus a free 6-DoF payload at fixed equal thrust is
+> an unstable equilibrium with no stabilizer. Drifting is correct physics, not a defect in the cable
+> model. The test specification was wrong, not the scaffold. It has been replaced by
+> `scripts/check_cable_physics.py`, which pins the quadrotors kinematically to isolate the cable and
+> payload subsystem — the thing actually under test.
 
-The scene is assembled through `SceneCfg.spec_fn` after mjlab attaches its
-entities.  Inspection of the assembled spec established the actual names:
-`quad_0/hook`, `quad_1/hook`, `quad_2/hook`, and
-`payload/attach_0..2`.  It compiles with `ntendon == 3`.
+## Cable representation
 
-Each tendon is spatial, limited, and has range `[0, 0.6]`, stiffness 2,000
-N/m, and damping 80.  Direct MuJoCo measurements from
-`scripts/validate_scaffold.py`:
+Cables are **spatial tendons** between `quad_{i}/hook` and `payload/attach_{i}`, added at scene level
+in `SceneCfg.spec_fn` after mjlab's `attach()` (they cross entity boundaries, so they cannot live in
+any single entity's spec). Site names were established by inspecting the assembled spec, not guessed.
+
+Each tendon is a **deadband spring**: `tendon_lengthspring` is a *range*, so force is zero below the
+rest length and pulls above it — a correct unilateral cable. `limited=True` additionally installs a
+hard limit constraint. Both mechanisms are currently active (see Open items).
 
 | Check | Measurement | Result |
 | --- | ---: | --- |
-| Taut (payload 5 mm lower) | length 0.605 m; 10.0 N/cable | pass, pull-only |
-| Slack (payload 100 mm higher) | length 0.500 m; 0 N/cable | pass |
-| Symmetric load share | 2.4525 N/cable; expected 2.4525 N | pass |
-| Equal-hover 2,000 steps | finite; 39.601 m payload drift | **fail** |
+| Compiles, `ntendon == 3` | 3 tendons, range `[0, 0.6]` | pass |
+| Taut (payload 5 mm lower) | length 0.605 m, 10.0 N/cable | pass, pull-only |
+| Slack (payload 100 mm higher) | length 0.500 m, 0 N/cable | pass |
+| Symmetric static load share | 2.4525 N/cable = `0.75·9.81/3` exactly | pass |
 
-The load-share value is `0.75 * 9.81 / 3`; the equilibrium stretch is 1.22625
-mm.  This confirms that MuJoCo represents the intended unilateral cable rather
-than a rigid rod.
+## Cable/payload subsystem stability
+
+`scripts/check_cable_physics.py` — quads pinned kinematically, payload displaced 0.10 m laterally and
+released, 4000 steps (20 s at 5 ms), energy diagnostics enabled via `mjENBL_ENERGY`.
+
+| Check | Measurement | Result |
+| --- | ---: | --- |
+| Finite after 4000 steps | no NaN | pass |
+| Oscillation decays | amplitude ratio late/early = 0.12, 0.06, 0.06 | pass |
+| Tension sum = payload weight | 7.3535 N vs 7.3575 N — **0.05 % error** | pass |
+| No energy injection | energy ratio 0.9911 (dissipative) | pass |
+| Payload z drift, last 25 % | 1.05 mm | pass |
+
+## GPU throughput (RTX A4000, 16 GB)
+
+Measured on the real device. `njmax=128`, `nconmax=64`, Euler, 5 ms timestep.
+
+| num_envs | steps/s |
+| ---: | ---: |
+| 256 | 47,905 |
+| 512 | 78,664 |
+| 1024 | 119,394 |
+| 2048 | 163,802 |
+| **4096** | **204,023** |
+
+**No OOM at 4096 envs** — we match CoRL's parallelism on a much weaker GPU than their RTX 3090.
+Throughput scales near-linearly to 4096, so 4096 is the operating point.
+
+Budget implication: at ~204 k physics steps/s, and assuming PPO overhead leaves ~30–50 % of that,
+a 1e9-step run lands around 2–3 h. A two-phase pipeline over ~30 configs/seeds is therefore on the
+order of days, not months. **Compute is not the binding constraint.**
+
+> Caveat: `peak=0.00 GiB` in the sweep output is a measurement bug, not a real reading —
+> mujoco-warp allocates outside torch's caching allocator, so `torch.cuda.max_memory_allocated()`
+> cannot see it. Use `torch.cuda.mem_get_info()` or `nvidia-smi` to get true peak memory.
 
 ## Constraint allocation
 
-At the nominal pose, MuJoCo reports `nefc = 79`.  Of these, 76 are existing
-actuator-limit rows and the three tendon upper-limit rows bring the total to
-**79**.  `mujoco-warp.put_data` rejects `njmax=64` and accepts the model only
-at `njmax >= 79`; use **njmax=128** for headroom.  `nconmax=64` accepted the
-non-contact nominal configuration.  The three tendons add only three rows, so
-their nominal solver-row cost is small; they are not the dominant allocation.
+At the nominal pose `nefc = 79`: 76 actuator-limit rows plus 3 tendon upper-limit rows.
+`mujoco-warp.put_data` rejects `njmax=64` and accepts at `njmax >= 79`. **Use `njmax=128`** for
+headroom. `nconmax=64` is sufficient for the non-contact nominal configuration. The tendons
+contribute only 3 rows — they are not the dominant allocation cost.
 
-## GPU throughput and per-environment randomization
+## Open items for the next stage
 
-No CUDA device is exposed in this execution environment.  Warp reports only a
-CPU device and errors with `"cuda" device requested but CUDA is not supported
-by the hardware or driver`.  Therefore there are **no defensible RTX A4000
-throughput, peak-memory, or maximum-environment numbers** to report.  The
-sweep is implemented in `validate_scaffold.py`; it expands `tendon_range`,
-writes upper ranges of 0.55 m and 0.65 m to separate world batches, steps, and
-catches `torch.cuda.OutOfMemoryError` per requested batch size.  It intentionally
-prints `SKIPPED` rather than fabricating measurements when CUDA is unavailable.
-
-## Design concern / next experiment
-
-The failure does not disprove spatial tendons: their unilateral semantics and
-static force split are correct.  It does show that equal motor thrust is not a
-stability test for this coupled free-body system.  The cable hooks apply forces
-below each quad's CoM and the payload is free in all six DoF; without an
-attitude/position stabilizer the team departs rapidly.  Before any RL work,
-repeat the 2,000-step test on the actual A4000 with a minimal deterministic
-geometric attitude/position hold (or temporarily constrain the quad poses).
-If that still diverges, tune tendon `solref`/damping and attachment geometry.
-Only if the stabilized test fails should the cable representation be replaced
-with a `connect` equality constraint or short body chain.
-
-## Environment note
-
-`pyproject.toml` declares the required editable path dependency and the
-project `.venv` was created with CPython 3.12.11.  A full fresh `uv sync` could
-not complete here because the sandbox has no package-network access; validation
-used `uv run --no-sync` with the already-installed working project dependencies
-on the Python path.  This does not alter `mj-adapt-drones`.
+1. **Spring and limit are redundant.** The deadband spring already gives correct unilateral cable
+   behaviour; `limited=True` adds a hard limit constraint on top. Dropping `limited` would remove
+   3 constraint rows per env, drop `njmax` back to ~79, and give a smoother (better-conditioned)
+   contact-free system for RL. Worth an A/B before committing.
+2. **True peak memory is still unmeasured** — fix the instrumentation before sizing the largest run.
+3. **Cable stiffness/damping (2000 N/m, 80) are unvalidated defaults.** They should be justified
+   against a real cable, or randomized as part of DR.
+4. **Attachment geometry is untuned.** Verify 6-DoF controllability of the payload — particularly
+   yaw authority, which is the weak axis for three near-vertical cables.

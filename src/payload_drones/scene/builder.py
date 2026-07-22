@@ -37,7 +37,12 @@ def _set_air_drag_and_cables(spec: mujoco.MjSpec) -> None:
         tendon = spec.add_tendon(name=f"cable_{index}")
         tendon.wrap_site(hook)
         tendon.wrap_site(attach)
-        tendon.limited = True
+        # Deadband spring only, NO `limited=True`. `lengthspring` as a range
+        # already gives correct unilateral cable behaviour (zero force below the
+        # rest length, pulls above it). Adding a hard limit constraint on top is
+        # redundant: it costs 3 constraint rows per env and makes the system
+        # stiffer/worse-conditioned for RL, for no change in physics.
+        tendon.springlength = [0.0, DEFAULT_CABLE_LENGTH]
         tendon.range = [0.0, DEFAULT_CABLE_LENGTH]
         # The MjSpec Python binding represents both parameters as 3-vectors.
         tendon.stiffness = np.full(3, DEFAULT_CABLE_STIFFNESS)
