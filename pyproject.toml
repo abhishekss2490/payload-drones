@@ -30,3 +30,8 @@ url = "https://download.pytorch.org/whl/cu129"
 name = "nvidia"
 url = "https://pypi.nvidia.com/"
 explicit = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
