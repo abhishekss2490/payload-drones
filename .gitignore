@@ -8,3 +8,6 @@ __pycache__/
 .claude/
 .codex/
 .diag.txt
+
+# Training run outputs
+logs/
