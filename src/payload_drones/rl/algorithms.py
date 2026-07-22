@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from mj_adapt_drones.rl.algorithms import LatentDistillation
+from payload_drones.vendor.rl.algorithms import LatentDistillation
 
 from payload_drones.rl.models import MARLStudentModel, MARLTeacherModel
 

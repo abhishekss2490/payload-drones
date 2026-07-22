@@ -6,7 +6,6 @@ readme = "RESEARCH_BRIEF.md"
 authors = [{ name = "Varad Vaidya", email = "vaidyavarad2001@gmail.com" }]
 requires-python = ">=3.12"
 dependencies = [
-    "mj-adapt-drones",
     "mjlab>=1.3.0",
     "numpy>=2.4.4",
     "torch>=2.11.0",
@@ -21,7 +20,6 @@ build-backend = "uv_build"
 payload_drones = "payload_drones.config"
 
 [tool.uv.sources]
-mj-adapt-drones = { path = "/scratch/robotics/mj-adapt-drones", editable = true }
 torch = { index = "pytorch-cu129" }
 warp-lang = { index = "nvidia", marker = "sys_platform != 'darwin'" }
 

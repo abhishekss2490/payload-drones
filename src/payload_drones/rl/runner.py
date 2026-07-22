@@ -1,6 +1,6 @@
 """Payload-task runner names and checkpoint compatibility with base RMA."""
 
-from mj_adapt_drones.rl.runner import MjlabDistillationRunner, MjlabRMAPhase1Runner
+from payload_drones.vendor.rl.runner import MjlabDistillationRunner, MjlabRMAPhase1Runner
 
 
 class MARLPhase1Runner(MjlabRMAPhase1Runner):

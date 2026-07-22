@@ -1,8 +1,7 @@
 #!/bin/bash
 # Parameterized SLURM launcher for payload-transport training on KIAC.
 #
-# Adapted from mj-adapt-drones/scripts/train_quadrotor_rma_phase1.sh, extended so
-# one script can launch many configurations and pin each to a specific commit.
+# One script can launch many configurations and pin each to a specific commit.
 # That matters for a sweep whose results are reviewed later: without a recorded
 # commit there is no way to tell which code produced which curve.
 #
@@ -33,7 +32,6 @@ shift 2
 EXTRA_ARGS=("$@")
 
 REPO_URL="https://github.com/varadVaidya/payload-drones.git"
-BASE_REPO="$HOME/robotics/mj-adapt-drones"
 WORKDIR="$HOME/robotics/payload-runs"
 RUN_DIR="$WORKDIR/$RUN_NAME"
 
@@ -50,12 +48,6 @@ echo "gpu          : $(nvidia-smi --query-gpu=name,memory.total --format=csv,noh
 echo "started      : $(date -Is)"
 echo "=========================================================="
 
-# The base repo is an editable path dependency; without it uv sync cannot resolve.
-if [ ! -d "$BASE_REPO" ]; then
-  echo "FATAL: base repo missing at $BASE_REPO" >&2
-  exit 1
-fi
-
 mkdir -p "$WORKDIR"
 if [ ! -d "$RUN_DIR/.git" ]; then
   git clone --quiet "$REPO_URL" "$RUN_DIR"
@@ -64,19 +56,6 @@ cd "$RUN_DIR"
 git fetch --quiet origin
 git checkout --quiet --detach "$GIT_REF"
 echo "checked out  : $(git log --oneline -1)"
-
-# pyproject pins the base repo by absolute path, which differs from the dev box.
-# Rewrite it for this machine rather than editing the committed file.
-python3 - "$BASE_REPO" <<'PY'
-import pathlib, re, sys
-base = sys.argv[1]
-p = pathlib.Path("pyproject.toml")
-s = p.read_text()
-s2 = re.sub(r'path = "[^"]*mj-adapt-drones"', f'path = "{base}"', s)
-if s2 != s:
-    p.write_text(s2)
-    print(f"pyproject    : repointed mj-adapt-drones -> {base}")
-PY
 
 uv sync --quiet
 echo "python       : $(uv run --no-sync python -V 2>&1)"

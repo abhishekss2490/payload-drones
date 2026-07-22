@@ -9,7 +9,7 @@ import torch
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 
-from mj_adapt_drones.mdp.actions import QuadrotorThrustActionCfg
+from payload_drones.vendor.mdp.actions import QuadrotorThrustActionCfg
 
 from payload_drones.mdp.team_scaling import N_AGENTS
 

@@ -9,7 +9,7 @@ from mjlab.envs.mdp.rewards import is_alive, is_terminated
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.utils.lab_api.math import quat_error_magnitude
 
-from mj_adapt_drones.mdp.rewards import _exp_kernel
+from payload_drones.vendor.mdp.rewards import _exp_kernel
 
 from payload_drones.mdp.observations import _payload, _ref_pos
 from payload_drones.mdp.team_scaling import N_AGENTS

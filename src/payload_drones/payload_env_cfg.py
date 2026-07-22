@@ -10,7 +10,7 @@ from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.viewer import ViewerConfig
 
-from mj_adapt_drones.mdp.quad_scaling import ScaleCfg
+from payload_drones.vendor.mdp.quad_scaling import ScaleCfg
 
 from payload_drones.mdp.actions import TeamThrustActionCfg
 from payload_drones.mdp.curriculum import curriculum_terms

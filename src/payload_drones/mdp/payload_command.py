@@ -11,7 +11,7 @@ from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers.command_manager import CommandTerm, CommandTermCfg
 from mjlab.utils.lab_api.math import quat_from_euler_xyz
 
-from mj_adapt_drones.mdp.trajectory import (
+from payload_drones.vendor.mdp.trajectory import (
     compose,
     compute_timing,
     lissajous_path,

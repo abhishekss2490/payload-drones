@@ -13,8 +13,8 @@ from rsl_rl.modules import EmpiricalNormalization, MLP, HiddenState
 from rsl_rl.modules import GaussianDistribution
 from rsl_rl.utils import unpad_trajectories
 
-from mj_adapt_drones.rl.models import _squashed_forward
-from mj_adapt_drones.rl.modules import CausalTCN, TrajectoryEncoder
+from payload_drones.vendor.rl.models import _squashed_forward
+from payload_drones.vendor.rl.modules import CausalTCN, TrajectoryEncoder
 
 
 N_AGENTS = 3

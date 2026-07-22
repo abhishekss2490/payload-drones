@@ -6,7 +6,7 @@ This project registers through mjlab's own task registry
 (``mjlab.tasks.registry.register_mjlab_task``), exposed via the
 ``[project.entry-points."mjlab.tasks"]`` hook in ``pyproject.toml`` and launched
 as ``uv run train <task-id>`` — the same pattern as the base repo's
-``mj_adapt_drones.config``. It is *not* a Gymnasium environment; mjlab does not
+``payload_drones.config``. It is *not* a Gymnasium environment; mjlab does not
 use Gymnasium and it is not installed in this venv.
 
 ``register_mjlab_task`` requires an ``rl_cfg`` (and optionally a ``runner_cls``),

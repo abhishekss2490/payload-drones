@@ -10,7 +10,7 @@ from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers.event_manager import RecomputeLevel, requires_model_fields
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
-from mj_adapt_drones.mdp.quad_scaling import (
+from payload_drones.vendor.mdp.quad_scaling import (
     QuadState,
     ScaleCfg,
     initialize_quad_state,
