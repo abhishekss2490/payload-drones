@@ -40,10 +40,53 @@ _ITER = 256
 curriculum_terms = {
     "payload_position_tracking_std": CurriculumTermCfg(
         func=reward_curriculum,
-        params={"reward_name": "payload_position_tracking", "stages": [{"step": 0, "params": {"std": 0.75}}, {"step": 200 * _ITER, "params": {"std": 0.5}}]},
+        # Deliberately no step-zero stage: the reward config's initial std is a
+        # direct CLI override for the broad-capture ablation.
+        params={"reward_name": "payload_position_tracking", "stages": [
+            {"step": 500 * _ITER, "params": {"std": 0.60}},
+            {"step": 1000 * _ITER, "params": {"std": 0.50}},
+        ]},
     ),
     "payload_position_fine_std": CurriculumTermCfg(
         func=reward_curriculum,
-        params={"reward_name": "payload_position_fine", "stages": [{"step": 0, "params": {"std": 0.20}}, {"step": 200 * _ITER, "params": {"std": 0.1}}]},
+        params={"reward_name": "payload_position_fine", "stages": [
+            {"step": 500 * _ITER, "params": {"std": 0.15}},
+            {"step": 1000 * _ITER, "params": {"std": 0.10}},
+        ]},
+    ),
+    "payload_orientation_tracking_std": CurriculumTermCfg(
+        func=reward_curriculum,
+        params={"reward_name": "payload_orientation_tracking", "stages": [
+            {"step": 500 * _ITER, "params": {"std": 0.50}},
+            {"step": 1000 * _ITER, "params": {"std": 0.30}},
+        ]},
+    ),
+    "payload_velocity_tracking_std": CurriculumTermCfg(
+        func=reward_curriculum,
+        params={"reward_name": "payload_velocity_tracking", "stages": [
+            {"step": 500 * _ITER, "params": {"std": 0.75}},
+            {"step": 1000 * _ITER, "params": {"std": 0.50}},
+        ]},
+    ),
+    "payload_ang_vel_std": CurriculumTermCfg(
+        func=reward_curriculum,
+        params={"reward_name": "payload_ang_vel_penalty", "stages": [
+            {"step": 500 * _ITER, "params": {"std": 1.50}},
+            {"step": 1000 * _ITER, "params": {"std": 1.00}},
+        ]},
+    ),
+    "action_rate_weight": CurriculumTermCfg(
+        func=reward_curriculum,
+        params={"reward_name": "action_rate", "stages": [
+            {"step": 500 * _ITER, "weight": -0.001},
+            {"step": 1000 * _ITER, "weight": -0.002},
+        ]},
+    ),
+    "body_rate_weight": CurriculumTermCfg(
+        func=reward_curriculum,
+        params={"reward_name": "body_rate_penalty", "stages": [
+            {"step": 500 * _ITER, "weight": -0.001},
+            {"step": 1000 * _ITER, "weight": -0.002},
+        ]},
     ),
 }

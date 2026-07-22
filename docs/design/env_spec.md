@@ -38,8 +38,10 @@ air drag set on the root spec.
 Cables are explicit **upper-limit constraints** (`limited=True`, `range=[0, L]`,
 `solref_limit=[0.01, 1.0]`), not explicit springs. They are slack below `L` and pull at the upper
 bound; `stiffness=damping=0`. The prior spring-only characterization was wrong because MuJoCo's
-auto-limit inference had already enabled a tendon limit whenever `range` was set. Simulation config:
-`njmax=128`, `nconmax=64`, Euler, `timestep=0.005`.
+auto-limit inference had already enabled a tendon limit whenever `range` was set. The scene includes
+a collision plane. Simulation config: `njmax=512`, `nconmax=64`, Euler, `timestep=0.005`. The larger
+constraint arena is required because ground and inter-quad contacts can transiently raise `nefc`
+above the old capacity (165 was measured during the local sanity run).
 
 Entity naming is fixed: quads are `quad_{i}` for `i in 0..2`, payload is `payload`.
 Cable tendons are `cable_{i}`. Sites are `quad_{i}/hook` and `payload/attach_{i}`.
@@ -164,7 +166,8 @@ which is resolved by the constraint solver and does not require mass-dependent `
 `team_dynamics_randomization` continues to randomize only each cable's physical length by writing
 the upper entries of `tendon_lengthspring` and `tendon_range`. The fixed scene model sets
 `limited=True`, `stiffness=damping=0`, `solref_limit=[0.01, 1.0]`, and default `solimp_limit`.
-The three tendon rows are included in the measured `nefc=79`, below `njmax=128`.
+The three tendon rows are included in the constraint count. The uncongested reset value is well
+below `njmax=512`; random-contact stress reached 37 after the capacity fix.
 
 **Acceptance:** static constrained hang has millimetre-scale stretch; 4096 envs under random
 actions for 400 steps remain finite with max quad-payload separation below 5 m. Do **not** narrow
@@ -255,6 +258,14 @@ pumps swing; anticipation lets the team pre-shape motion. This is classic crane 
   trajectory_decimation` resolution, sized `N_episode + observation_horizon` so the lookahead never
   runs off the end.
 - Populate the previously-zero velocity slots of the command tensor.
+- The command owns reset-time root state, as in the validated base implementation: spawn the payload
+  at the first trajectory sample with small position/velocity/angular-velocity perturbations, then
+  derive all quad roots from the live attachment sites and randomized cable lengths. There is no
+  independent fixed-position root-reset event.
+- Use identity payload attitude for both spawn and reference during bring-up. Arbitrary reference
+  attitude remains an explicit, default-off configuration option.
+- Mix stationary hover references into the moving-trajectory distribution (0.40 initially,
+  annealing to 0.15) so basic stabilization remains represented while trajectory difficulty grows.
 
 ### Curriculum by team thrust-to-weight
 
@@ -340,19 +351,23 @@ channel for H1/H2 — it must exist from day one or the hypotheses cannot be eva
 **New module:** `src/payload_drones/mdp/rewards.py`
 
 Reuse `_exp_kernel` and the Gaussian-kernel convention from the base repo's `rewards.py`.
-Positive weights sum to 1.0; penalties are negative on top.
+Tracking weights sum to 1.0. A bounded alive reward and terminal crash penalty make early failure
+strictly worse than continuing; control penalties start at zero and ramp only after the policy has
+learned to survive.
 
 | Term | Weight | Definition |
 | --- | ---: | --- |
-| `payload_position_tracking` | 0.30 | `exp_kernel(||p_load - p_ref||^2, std=0.5)` |
-| `payload_position_fine` | 0.20 | same, `std=0.1` |
-| `payload_orientation_tracking` | 0.20 | `exp_kernel(quat_error^2, std=0.3)` |
-| `payload_velocity_tracking` | 0.15 | `exp_kernel(||v_load - v_ref||^2, std=0.5)` |
-| `payload_ang_vel_penalty` | 0.15 | `exp_kernel(||w_load||^2, std=1.0)` — settle the load |
-| `action_rate` | -0.01 | per-agent, masked, mean over active agents |
-| `body_rate_penalty` | -0.01 | per-agent quad angular velocity |
-| `quad_proximity_penalty` | -0.05 | pairwise; hinge below `min_separation=0.5` m |
-| `cable_slack_penalty` | -0.02 | discourages sustained slack (snap loads) |
+| `payload_position_tracking` | 0.30 | `std=0.75`, tightened to 0.60 at iteration 500 and 0.50 at 1000 |
+| `payload_position_fine` | 0.20 | `std=0.20 -> 0.15 -> 0.10` at iterations 0/500/1000 |
+| `payload_orientation_tracking` | 0.20 | `std=0.75 -> 0.50 -> 0.30` |
+| `payload_velocity_tracking` | 0.15 | `std=1.00 -> 0.75 -> 0.50` |
+| `payload_ang_vel_penalty` | 0.15 | positive stability kernel, `std=2.00 -> 1.50 -> 1.00` |
+| `is_alive` | 0.10 | bounded survival reward on every nonterminal step |
+| `action_rate` | `0 -> -0.001 -> -0.002` | masked mean; stages at iterations 0/500/1000 |
+| `body_rate_penalty` | `0 -> -0.001 -> -0.002` | masked mean squared rate, capped at 25 |
+| `quad_proximity_penalty` | -0.01 | pairwise hinge below `min_separation=0.5` m |
+| `cable_slack_penalty` | -0.004 | discourages sustained slack (snap loads) |
+| `crash_penalty` | -200 | applied on non-timeout termination (`-2.0` at the 100 Hz control step) |
 
 Per-agent penalties must be **masked and averaged over active agents only**, so a failed agent does
 not dilute the penalty for the survivors.
@@ -368,10 +383,13 @@ allocation. See constraint 1.
 
 Reuse `nan_detection` and `time_out` from mjlab. New terms:
 
-- `payload_ground_contact` — payload z below 0.15 m relative to env origin.
+- `payload_ground_contact` — actual payload-geometry contact with the terrain plane.
+- `any_quad_ground_contact` — actual contact between any quad geometry and terrain.
 - `payload_far_from_goal` — `||p_load - p_ref|| > 3.0` m.
 - `any_quad_tumbling` — any *active* quad with `||w|| > 50` rad/s. Ignore inactive agents.
-- `quad_collision` — any pair closer than 0.25 m.
+- `quad_collision` — actual contact between geometries belonging to different quads. This is
+  rotation-aware and exactly matches the contacts used by the solver; centre-distance thresholds
+  cannot remain coherent when arm and rotor sites are randomized independently of nominal meshes.
 - `cable_overextension` — any cable stretched beyond `1.5 * L` (indicates a solver problem).
 
 ---
@@ -383,7 +401,7 @@ Reuse `nan_detection` and `time_out` from mjlab. New terms:
 `CommandsCfg`, `CurriculumCfg` dataclasses composed into a `ManagerBasedRlEnvCfg`).
 
 - `episode_length_s = 10.0`, `decimation = 2` (control at 100 Hz on a 5 ms physics step).
-- `SimulationCfg(njmax=128, nconmax=64, integrator="euler", timestep=0.005)`.
+- `SimulationCfg(njmax=512, nconmax=64, integrator="euler", timestep=0.005)`.
 - Registration uses **mjlab's own registry**, not Gymnasium:
   `mjlab.tasks.registry.register_mjlab_task` called from `payload_drones/config/__init__.py`,
   exposed via `[project.entry-points."mjlab.tasks"]` in `pyproject.toml`, launched as
@@ -395,9 +413,10 @@ Reuse `nan_detection` and `time_out` from mjlab. New terms:
   > deferred to the model/training stage; until then build the env directly from
   > `make_payload_env_cfg`.
 
-Event ordering matters and must be: `reset_scene_to_default` → `team_dynamics_randomization` →
-`sample_agent_failure` → root-state reset. The base repo's DR docstring states this ordering
-requirement; violating it randomizes into a stale model.
+Reset ordering is: `reset_scene_to_default` → `team_dynamics_randomization` →
+`sample_agent_failure` → command resampling/aligned team spawn. The command deliberately owns
+root-state initialization because it needs the sampled trajectory and the already-randomized live
+attachment geometry; a separate root-reset event would overwrite or use stale state.
 
 ---
 
@@ -420,8 +439,8 @@ requirement; violating it randomizes into a stale model.
 4. **Privilege leak check:** assert the `policy` group tensor is unchanged when payload mass and
    cable length are perturbed, holding all else fixed. Guards constraints 2 and 5.
 5. Masking: with an agent inactive, its commanded thrust reaches the actuators as exactly zero.
-6. Reward sanity: payload held at goal yields positive reward summing to exactly 1.0; at 3 m
-   position error the two *position* kernels fall below 1e-12.
+6. Reward sanity: payload held at goal yields positive tracking/stability reward summing to exactly
+   1.0 (1.1 including `is_alive`); at 3 m position error the two *position* kernels are negligible.
 
    > Corrected 2026-07-22. This originally demanded near-zero *total* reward at 3 m error, which is
    > mathematically impossible under section 6's weights: orientation, linear-velocity and

@@ -5,6 +5,7 @@ from __future__ import annotations
 import torch
 
 from mjlab.envs import ManagerBasedRlEnv
+from mjlab.envs.mdp.rewards import is_alive, is_terminated
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.utils.lab_api.math import quat_error_magnitude
 
@@ -45,9 +46,15 @@ def action_rate(env: ManagerBasedRlEnv) -> torch.Tensor:
     return _masked_mean(env, delta.square().mean(-1))
 
 
-def body_rate_penalty(env: ManagerBasedRlEnv) -> torch.Tensor:
+def body_rate_penalty(env: ManagerBasedRlEnv, max_cost: float = 25.0) -> torch.Tensor:
+    """Bounded mean squared body rate across active vehicles.
+
+    A catastrophic final integration step can overshoot the 50 rad/s tumbling
+    threshold by an arbitrary amount.  Capping this shaping cost keeps that one
+    step from overwhelming the explicit, fixed terminal penalty.
+    """
     rates = torch.stack([env.scene[f"quad_{i}"].data.root_link_ang_vel_b.square().mean(-1) for i in range(N_AGENTS)], dim=-1)
-    return _masked_mean(env, rates)
+    return _masked_mean(env, rates).clamp(max=max_cost)
 
 
 def quad_proximity_penalty(env: ManagerBasedRlEnv, min_separation: float = 0.5) -> torch.Tensor:
@@ -70,14 +77,26 @@ def cable_slack_penalty(env: ManagerBasedRlEnv) -> torch.Tensor:
     return _masked_mean(env, torch.stack(values, -1))
 
 
+# Initial widths are the first stage of the live curriculum.  In particular,
+# the coarse position std is intentionally kept in the reward config so Tyro's
+# ``--env.rewards.payload-position-tracking.params.std`` flag can select the
+# early capture basin; the curriculum only overwrites it at later stages.
 reward_terms = {
-    "payload_position_tracking": RewardTermCfg(func=payload_position_tracking, weight=0.30, params={"std": 0.5}),
-    "payload_position_fine": RewardTermCfg(func=payload_position_tracking, weight=0.20, params={"std": 0.1}),
-    "payload_orientation_tracking": RewardTermCfg(func=payload_orientation_tracking, weight=0.20, params={"std": 0.3}),
-    "payload_velocity_tracking": RewardTermCfg(func=payload_velocity_tracking, weight=0.15, params={"std": 0.5}),
-    "payload_ang_vel_penalty": RewardTermCfg(func=payload_ang_vel_penalty, weight=0.15, params={"std": 1.0}),
-    "action_rate": RewardTermCfg(func=action_rate, weight=-0.01),
-    "body_rate_penalty": RewardTermCfg(func=body_rate_penalty, weight=-0.01),
-    "quad_proximity_penalty": RewardTermCfg(func=quad_proximity_penalty, weight=-0.05),
-    "cable_slack_penalty": RewardTermCfg(func=cable_slack_penalty, weight=-0.02),
+    "payload_position_tracking": RewardTermCfg(func=payload_position_tracking, weight=0.30, params={"std": 0.75}),
+    "payload_position_fine": RewardTermCfg(func=payload_position_tracking, weight=0.20, params={"std": 0.20}),
+    "payload_orientation_tracking": RewardTermCfg(func=payload_orientation_tracking, weight=0.20, params={"std": 0.75}),
+    "payload_velocity_tracking": RewardTermCfg(func=payload_velocity_tracking, weight=0.15, params={"std": 1.0}),
+    "payload_ang_vel_penalty": RewardTermCfg(func=payload_ang_vel_penalty, weight=0.15, params={"std": 2.0}),
+    # At the worst bounded shaping values, a live step still has positive
+    # reward: 0.10 alive - 0.05 body-rate - 0.008 action-rate - 0.005 proximity
+    # - 0.004 slack = +0.033 before non-negative tracking terms.  Since a real
+    # termination additionally costs 2.0 after dt scaling, early termination
+    # cannot improve return by escaping future shaping costs.
+    "is_alive": RewardTermCfg(func=is_alive, weight=0.10),
+    "action_rate": RewardTermCfg(func=action_rate, weight=0.0),
+    "body_rate_penalty": RewardTermCfg(func=body_rate_penalty, weight=0.0, params={"max_cost": 25.0}),
+    "quad_proximity_penalty": RewardTermCfg(func=quad_proximity_penalty, weight=-0.01),
+    "cable_slack_penalty": RewardTermCfg(func=cable_slack_penalty, weight=-0.004),
+    # Rewards are scaled by dt=0.01, so this is a -2.0 terminal event cost.
+    "crash_penalty": RewardTermCfg(func=is_terminated, weight=-200.0),
 }

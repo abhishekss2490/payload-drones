@@ -18,6 +18,7 @@ from mj_adapt_drones.mdp.trajectory import (
 )
 
 from payload_drones.mdp.curriculum import team_twr_bin
+from payload_drones.mdp.team_scaling import settle_quads_for_cable_slack
 
 
 @dataclass(kw_only=True)
@@ -60,12 +61,29 @@ class PayloadTrajectoryCommandCfg(CommandTermCfg):
     ramp_fraction: float = 0.1
     max_payload_speed: float = 1.5
 
+    # Reset/task bring-up.  The command owns spawn so the physical state and
+    # reference can never be sampled independently.
+    align_spawn_to_reference: bool = True
+    spawn_position_perturbation: float = 0.075
+    spawn_velocity_perturbation: float = 0.05
+    spawn_angular_velocity_perturbation: float = 0.05
+    cable_spawn_slack_ratio: float = 0.95
+
+    # A cable-coupled team must learn stationary suspension before every
+    # episode asks for translation.  This probability anneals linearly in PPO
+    # iterations and is independently CLI-overridable for the no-warm-up run.
+    hover_fraction_initial: float = 0.40
+    hover_fraction_final: float = 0.15
+    hover_anneal_iterations: int = 500
+    steps_per_iteration: int = 256
+
     position_range_x: tuple[float, float] = (-1.5, 1.5)
     position_range_y: tuple[float, float] = (-1.5, 1.5)
     position_range_z: tuple[float, float] = (0.8, 2.0)
     roll_range: tuple[float, float] = (-0.3, 0.3)
     pitch_range: tuple[float, float] = (-0.3, 0.3)
     yaw_range: tuple[float, float] = (-math.pi, math.pi)
+    arbitrary_attitude_setpoint: bool = False
     resampling_time_range: tuple[float, float] = (1.0e9, 1.0e9)
 
     # Used only before reset-time domain randomization has created TeamState.
@@ -88,6 +106,14 @@ class PayloadTrajectoryCommand(CommandTerm):
             raise ValueError("observation_horizon must be at least the 200-waypoint preview")
         if cfg.max_payload_speed <= 0:
             raise ValueError("max_payload_speed must be positive")
+        if not 0.0 <= cfg.hover_fraction_initial <= 1.0:
+            raise ValueError("hover_fraction_initial must lie in [0, 1]")
+        if not 0.0 <= cfg.hover_fraction_final <= 1.0:
+            raise ValueError("hover_fraction_final must lie in [0, 1]")
+        if cfg.hover_anneal_iterations < 0 or cfg.steps_per_iteration <= 0:
+            raise ValueError("hover annealing lengths must be non-negative")
+        if not 0.0 < cfg.cable_spawn_slack_ratio <= 1.0:
+            raise ValueError("cable_spawn_slack_ratio must lie in (0, 1]")
 
         self.physics_dt = env.physics_dt
         self.traj_dt = self.physics_dt * cfg.trajectory_decimation
@@ -114,10 +140,12 @@ class PayloadTrajectoryCommand(CommandTerm):
         self.bin_attempts = torch.zeros(cfg.num_twr_bins, dtype=torch.long, device=env.device)
         self.bin_successes = torch.zeros(cfg.num_twr_bins, dtype=torch.long, device=env.device)
         self.env_bin = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+        self.is_hover_episode = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
 
         self.metrics["position_error"] = torch.zeros(env.num_envs, device=env.device)
         self.metrics["velocity_error"] = torch.zeros(env.num_envs, device=env.device)
         self.metrics["team_twr"] = torch.zeros(env.num_envs, device=env.device)
+        self.metrics["hover_episode"] = torch.zeros(env.num_envs, device=env.device)
 
     def _buf_idx(self) -> torch.Tensor:
         """Current reference index; episode_step is measured in physics steps."""
@@ -136,6 +164,11 @@ class PayloadTrajectoryCommand(CommandTerm):
         return self._quat_ref
 
     def _sample_static_orientation(self, env_ids: torch.Tensor) -> None:
+        if not self.cfg.arbitrary_attitude_setpoint:
+            self._quat_ref[env_ids] = 0.0
+            self._quat_ref[env_ids, 0] = 1.0
+            self._angular_velocity_ref[env_ids] = 0.0
+            return
         n = len(env_ids)
         roll = torch.empty(n, device=self.device).uniform_(*self.cfg.roll_range)
         pitch = torch.empty(n, device=self.device).uniform_(*self.cfg.pitch_range)
@@ -145,7 +178,9 @@ class PayloadTrajectoryCommand(CommandTerm):
 
     def _update_curriculum(self, env_ids: torch.Tensor) -> None:
         """Score completed episodes in the bins assigned for those episodes."""
-        graded = self.step_count[env_ids] > 0
+        # Stationary episodes teach suspension but must not promote the moving
+        # trajectory frontier.
+        graded = (self.step_count[env_ids] > 0) & ~self.is_hover_episode[env_ids]
         if not bool(graded.any()):
             return
         cfg = self.cfg
@@ -244,13 +279,80 @@ class PayloadTrajectoryCommand(CommandTerm):
         self.acceleration_ref[env_ids] = 0.0
         self.rho_actual[env_ids] = 0.0
 
+    def _generate_hover_trajectory(self, env_ids: torch.Tensor) -> None:
+        """Generate a stationary reference in the moving task's workspace."""
+        n = len(env_ids)
+        target = torch.empty(n, 3, device=self.device)
+        target[:, :2].uniform_(*self.cfg.offset_range_xy)
+        target[:, 2].uniform_(*self.cfg.offset_range_z)
+        self.position_ref[env_ids] = target[:, None, :]
+        self.velocity_ref[env_ids] = 0.0
+        self.acceleration_ref[env_ids] = 0.0
+        self.rho_actual[env_ids] = 0.0
+
+    def _current_hover_fraction(self) -> float:
+        cfg = self.cfg
+        if cfg.hover_anneal_iterations == 0:
+            return cfg.hover_fraction_final
+        anneal_steps = cfg.hover_anneal_iterations * cfg.steps_per_iteration
+        progress = min(max(self._env.common_step_counter / anneal_steps, 0.0), 1.0)
+        return cfg.hover_fraction_initial + progress * (
+            cfg.hover_fraction_final - cfg.hover_fraction_initial
+        )
+
+    def _initialize_team_at_reference(self, env_ids: torch.Tensor) -> None:
+        """Write payload state, then derive quad placement from live cable geometry."""
+        if not self.cfg.align_spawn_to_reference:
+            return
+        n = len(env_ids)
+        idx = torch.zeros(n, 1, 1, dtype=torch.long, device=self.device).expand(-1, 1, 3)
+        start_pos = self.position_ref[env_ids].gather(1, idx).squeeze(1)
+        start_vel = self.velocity_ref[env_ids].gather(1, idx).squeeze(1)
+
+        p = self.cfg.spawn_position_perturbation
+        v = self.cfg.spawn_velocity_perturbation
+        w = self.cfg.spawn_angular_velocity_perturbation
+        if p:
+            start_pos = start_pos + torch.empty_like(start_pos).uniform_(-p, p)
+        if v:
+            start_vel = start_vel + torch.empty_like(start_vel).uniform_(-v, v)
+        start_ang_vel = self._angular_velocity_ref[env_ids].clone()
+        if w:
+            start_ang_vel += torch.empty_like(start_ang_vel).uniform_(-w, w)
+
+        world_pos = start_pos + self._env.scene.env_origins[env_ids]
+        root_state = torch.cat(
+            [world_pos, self._quat_ref[env_ids], start_vel, start_ang_vel], dim=-1
+        )
+        payload = self._env.scene[self.cfg.entity_name]
+        payload.write_root_state_to_sim(root_state, env_ids=env_ids)
+
+        # This refreshes the just-written payload pose, reads the live rotated
+        # attach sites and randomized cable lengths, then writes all quad roots.
+        settle_quads_for_cable_slack(
+            self._env,
+            env_ids,
+            slack_ratio=self.cfg.cable_spawn_slack_ratio,
+            linear_velocity=start_vel,
+        )
+
     def _resample_command(self, env_ids: torch.Tensor) -> None:
         self._update_curriculum(env_ids)
         self._sample_static_orientation(env_ids)
         if self.cfg.trajectory_enabled:
-            self._generate_trajectory(env_ids, self._sample_trajectory_difficulty(env_ids))
+            max_acc = self._sample_trajectory_difficulty(env_ids)
+            is_hover = torch.rand(len(env_ids), device=self.device) < self._current_hover_fraction()
+            self.is_hover_episode[env_ids] = is_hover
+            hover_local = is_hover.nonzero().flatten()
+            moving_local = (~is_hover).nonzero().flatten()
+            if len(hover_local):
+                self._generate_hover_trajectory(env_ids[hover_local])
+            if len(moving_local):
+                self._generate_trajectory(env_ids[moving_local], max_acc[moving_local])
         else:
+            self.is_hover_episode[env_ids] = True
             self._generate_static_setpoint(env_ids)
+        self._initialize_team_at_reference(env_ids)
         self.episode_step[env_ids] = 0
         self.cumulative_sq_error[env_ids] = 0.0
         self.step_count[env_ids] = 0
@@ -263,6 +365,7 @@ class PayloadTrajectoryCommand(CommandTerm):
         self.metrics["position_error"] = pos_error
         self.metrics["velocity_error"] = vel_error
         self.metrics["team_twr"] = self.team_twr.clone()
+        self.metrics["hover_episode"] = self.is_hover_episode.float()
         self.cumulative_sq_error += pos_error.square()
         self.step_count += 1
 

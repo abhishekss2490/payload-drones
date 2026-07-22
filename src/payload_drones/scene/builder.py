@@ -9,6 +9,7 @@ import mujoco
 import numpy as np
 from mjlab.entity import EntityCfg
 from mjlab.scene import SceneCfg
+from mjlab.terrains import TerrainEntityCfg
 
 from payload_drones.assets.entities import get_hook_quadrotor_cfg, get_payload_cfg
 
@@ -71,7 +72,13 @@ def make_payload_scene_cfg(
         payload = get_payload_cfg()
     entities = {f"quad_{index}": quad for index, quad in enumerate(quadrotors)}
     entities["payload"] = payload
-    return SceneCfg(entities=entities, num_envs=num_envs, env_spacing=env_spacing, spec_fn=_set_air_drag_and_cables)
+    return SceneCfg(
+        terrain=TerrainEntityCfg(terrain_type="plane"),
+        entities=entities,
+        num_envs=num_envs,
+        env_spacing=env_spacing,
+        spec_fn=_set_air_drag_and_cables,
+    )
 
 
 if __name__ == "__main__":

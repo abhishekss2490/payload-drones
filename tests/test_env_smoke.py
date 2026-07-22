@@ -12,7 +12,13 @@ wp.config.kernel_cache_dir = "/tmp/payload-drones-warp-cache"
 
 from mjlab.envs import ManagerBasedRlEnv
 from payload_drones.mdp.observations import agent_dynamics, payload_trajectory, policy, team_probe
-from payload_drones.mdp.rewards import reward_terms
+from payload_drones.mdp.rewards import body_rate_penalty, reward_terms
+from payload_drones.mdp.terminations import (
+    any_quad_ground_contact,
+    payload_ground_contact,
+    quad_collision,
+)
+from payload_drones.config.rl_config import payload_rma_phase1_cfg
 from payload_drones.payload_env_cfg import make_payload_env_cfg
 
 
@@ -201,6 +207,37 @@ def test_5_reset_geometry_gives_each_cable_small_relative_slack():
     assert root_z.amin() > 0.25
 
 
+def test_reset_spawns_complete_team_at_reference_with_identity_attitude():
+    env = _env(512)
+    env.reset(seed=20260722)
+    command = env.command_manager.get_term("payload_pose")
+    payload = env.scene["payload"]
+
+    position_error = (
+        payload.data.root_link_pos_w
+        - (command.command[:, :3] + env.scene.env_origins)
+    ).norm(dim=-1)
+    velocity_error = (
+        payload.data.root_link_lin_vel_w - command.command[:, 7:10]
+    ).norm(dim=-1)
+    max_position_error = (3.0**0.5) * command.cfg.spawn_position_perturbation
+    max_velocity_error = (3.0**0.5) * command.cfg.spawn_velocity_perturbation
+    identity = torch.zeros(env.num_envs, 4, device=env.device)
+    identity[:, 0] = 1.0
+
+    assert position_error.max() <= max_position_error + 1.0e-5
+    assert velocity_error.max() <= max_velocity_error + 1.0e-5
+    assert torch.equal(command.quat_command, identity)
+    assert torch.equal(payload.data.root_link_quat_w, identity)
+    # The probabilistic check is deliberately broad; it catches disabled or
+    # all-hover behavior without making one seeded draw brittle.
+    hover_fraction = command.is_hover_episode.float().mean()
+    assert 0.30 < hover_fraction < 0.50
+    assert not payload_ground_contact(env).any()
+    assert not any_quad_ground_contact(env).any()
+    assert not quad_collision(env).any()
+
+
 def test_4_policy_has_no_payload_mass_or_cable_length_leak():
     env = _env(8)
     env.reset()
@@ -222,7 +259,7 @@ def test_5_inactive_agent_motor_force_is_exactly_zero():
     assert torch.count_nonzero(force[:, 0]) > 0
 
 
-def test_6_reward_sanity_exposes_spec_inconsistency():
+def test_6_reward_sanity_includes_bounded_survival_economics():
     """The positional kernels have the stated near/far behaviour.
 
     Section 9's stronger claim that *total* reward at 3 m position error is
@@ -247,9 +284,122 @@ def test_6_reward_sanity_exposes_spec_inconsistency():
     far_pos = reward_terms["payload_position_tracking"].func(env, std=0.5)
     far_fine = reward_terms["payload_position_fine"].func(env, std=0.1)
     far = sum(term.weight * term.func(env, **term.params) for term in reward_terms.values() if term.weight > 0)
-    assert torch.allclose(near, torch.ones_like(near), atol=1e-4)
+    # Tracking terms sum to 1.0 and a non-terminated live state adds 0.1.
+    assert torch.allclose(near, torch.full_like(near, 1.10), atol=1e-4)
     assert (far_pos < 1e-12).all() and (far_fine < 1e-12).all()
-    assert torch.allclose(far, torch.full_like(far, 0.50), atol=1e-4)
+    assert torch.allclose(far, torch.full_like(far, 0.60), atol=1e-4)
+
+
+def test_reward_economics_make_every_bounded_live_step_nonnegative():
+    env = _env(2)
+    env.reset()
+    for i in range(3):
+        quad = env.scene[f"quad_{i}"]
+        velocity = torch.zeros(env.num_envs, 6, device=env.device)
+        velocity[:, 3:] = 1.0e6
+        quad.write_root_link_velocity_to_sim(velocity)
+    env.sim.forward()
+    assert torch.equal(body_rate_penalty(env), torch.full((env.num_envs,), 25.0))
+
+    # Worst values under clipped actions and bounded shaping.  Positive
+    # tracking terms are omitted, making this a conservative lower bound.
+    lower_bound = 0.10 - 0.002 * 25.0 - 0.002 * 4.0 - 0.01 * 0.5 - 0.004
+    assert lower_bound > 0.0
+    assert reward_terms["action_rate"].weight == 0.0
+    assert reward_terms["body_rate_penalty"].weight == 0.0
+    assert reward_terms["crash_penalty"].weight * 0.01 == -2.0
+
+
+def test_contact_terminations_match_simulated_contacts():
+    env = _env(3)
+    env.reset(seed=73)
+
+    payload = env.scene["payload"]
+    pose = payload.data.root_link_pose_w.clone()
+    pose[0, 2] = 0.0
+    payload.write_root_link_pose_to_sim(pose)
+    env.sim.forward()
+    assert payload_ground_contact(env).tolist() == [True, False, False]
+
+    env.reset(seed=73)
+    quad_0 = env.scene["quad_0"]
+    pose = quad_0.data.root_link_pose_w.clone()
+    pose[1, 2] = 0.0
+    quad_0.write_root_link_pose_to_sim(pose)
+    env.sim.forward()
+    assert any_quad_ground_contact(env).tolist() == [False, True, False]
+
+    env.reset(seed=73)
+    quad_0 = env.scene["quad_0"]
+    quad_1 = env.scene["quad_1"]
+    pose = quad_1.data.root_link_pose_w.clone()
+    pose[2] = quad_0.data.root_link_pose_w[2]
+    quad_1.write_root_link_pose_to_sim(pose)
+    env.sim.forward()
+    assert quad_collision(env).tolist() == [False, False, True]
+
+
+def test_reward_curriculum_tightens_at_500_and_1000_iterations():
+    env = _env(2)
+    env.reset()
+
+    def snapshot() -> dict[str, float]:
+        return {
+            name: env.reward_manager.get_term_cfg(name).params["std"]
+            for name in (
+                "payload_position_tracking",
+                "payload_position_fine",
+                "payload_orientation_tracking",
+                "payload_velocity_tracking",
+                "payload_ang_vel_penalty",
+            )
+        }
+
+    assert snapshot() == {
+        "payload_position_tracking": 0.75,
+        "payload_position_fine": 0.20,
+        "payload_orientation_tracking": 0.75,
+        "payload_velocity_tracking": 1.0,
+        "payload_ang_vel_penalty": 2.0,
+    }
+    env.common_step_counter = 500 * 256
+    env.curriculum_manager.compute()
+    assert snapshot() == {
+        "payload_position_tracking": 0.60,
+        "payload_position_fine": 0.15,
+        "payload_orientation_tracking": 0.50,
+        "payload_velocity_tracking": 0.75,
+        "payload_ang_vel_penalty": 1.50,
+    }
+    assert env.reward_manager.get_term_cfg("action_rate").weight == -0.001
+    assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == -0.001
+
+    env.common_step_counter = 1000 * 256
+    env.curriculum_manager.compute()
+    assert snapshot() == {
+        "payload_position_tracking": 0.50,
+        "payload_position_fine": 0.10,
+        "payload_orientation_tracking": 0.30,
+        "payload_velocity_tracking": 0.50,
+        "payload_ang_vel_penalty": 1.00,
+    }
+    assert env.reward_manager.get_term_cfg("action_rate").weight == -0.002
+    assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == -0.002
+
+
+def test_sweep_parameters_are_direct_config_overrides():
+    env_cfg = make_payload_env_cfg(num_envs=2)
+    command_cfg = env_cfg.commands["payload_pose"]
+    assert env_cfg.rewards["payload_position_tracking"].params["std"] == 0.75
+    assert command_cfg.hover_fraction_initial == 0.40
+    assert command_cfg.hover_fraction_final == 0.15
+
+    rl_cfg = payload_rma_phase1_cfg()
+    assert rl_cfg.algorithm.learning_rate == 1.0e-3
+    assert rl_cfg.algorithm.num_learning_epochs == 5
+    assert rl_cfg.algorithm.num_mini_batches == 16
+    assert rl_cfg.algorithm.schedule == "adaptive"
+    assert rl_cfg.algorithm.desired_kl == 0.015
 
 
 def test_7_gpu_4096_construct_and_step_without_oom():
@@ -292,14 +442,16 @@ def test_9_moving_trajectory_populates_velocity_reference():
 
     # The generated buffer must contain real motion somewhere, unlike the
     # former static command whose velocity slots were zero everywhere.
-    peak_speed = command.velocity_ref.norm(dim=-1).max()
+    moving = ~command.is_hover_episode
+    assert moving.any(), "seeded batch unexpectedly contains no moving episodes"
+    peak_speed = command.velocity_ref[moving].norm(dim=-1).max()
     assert peak_speed > 0.1, f"trajectory buffer is essentially static: peak {peak_speed:.2e} m/s"
 
     # Read each trajectory at its own non-zero reference-speed sample without
     # relying on an arbitrary common episode time (short paths may finish
     # before the midpoint).
     command.episode_step[:] = command.velocity_ref.norm(dim=-1).argmax(dim=1) * command.cfg.trajectory_decimation
-    speed = command.command[:, 7:10].norm(dim=-1)
+    speed = command.command[moving, 7:10].norm(dim=-1)
     assert torch.all(speed > 1.0e-3), (
         f"velocity reference is ~zero mid-trajectory: {speed}"
     )

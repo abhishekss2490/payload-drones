@@ -203,6 +203,7 @@ def settle_quads_for_cable_slack(
     env: ManagerBasedRlEnv,
     env_ids: torch.Tensor | None,
     slack_ratio: float = 0.95,
+    linear_velocity: torch.Tensor | None = None,
 ) -> None:
     """Place each quad directly above its own attach point, cable slightly slack.
 
@@ -222,6 +223,10 @@ def settle_quads_for_cable_slack(
     translation gives all three tendons the same geometric length under a
     symmetric attachment layout. Moving each quad vertically preserves that DR
     axis and gives every cable the same relative slack.
+
+    ``linear_velocity`` lets a command-owned reset give the complete team the
+    payload trajectory's initial translational velocity.  With equal initial
+    velocities, reset does not inject a cable-relative impulse.
     """
     if not 0.0 < slack_ratio <= 1.0:
         raise ValueError("slack_ratio must lie in (0, 1]")
@@ -235,6 +240,12 @@ def settle_quads_for_cable_slack(
     env.sim.forward()
     payload = env.scene["payload"]
     target_lengths = slack_ratio * env.team_state.cable_length[ids]
+    if linear_velocity is None:
+        linear_velocity = torch.zeros(len(ids), 3, device=env.device)
+    if linear_velocity.shape != (len(ids), 3):
+        raise ValueError(
+            f"linear_velocity must have shape {(len(ids), 3)}, got {tuple(linear_velocity.shape)}"
+        )
 
     for i in range(N_AGENTS):
         quad = env.scene[f"quad_{i}"]
@@ -254,6 +265,8 @@ def settle_quads_for_cable_slack(
         root_pose[:, :2] += horizontal_offset
         root_pose[:, 2] += desired_hook_z - hook[:, 2]
         quad.write_root_link_pose_to_sim(root_pose, env_ids=ids)
+        root_velocity = torch.zeros(len(ids), 6, device=env.device)
+        root_velocity[:, :3] = linear_velocity
         quad.write_root_link_velocity_to_sim(
-            torch.zeros(len(ids), 6, device=env.device), env_ids=ids,
+            root_velocity, env_ids=ids,
         )
