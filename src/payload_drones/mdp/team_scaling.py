@@ -19,10 +19,6 @@ from mj_adapt_drones.mdp.quad_scaling import (
 
 N_AGENTS = 3
 GRAVITY = 9.81
-MAX_CABLE_STIFFNESS = 2_000.0
-MAX_CABLE_DAMPING = 80.0
-CABLE_STIFFNESS_SAFETY = 0.25
-CABLE_DAMPING_SAFETY = 0.5
 
 
 @dataclass
@@ -74,8 +70,6 @@ def _ids(env: ManagerBasedRlEnv, env_ids: torch.Tensor | None) -> torch.Tensor:
     "actuator_ctrlrange",
     "tendon_lengthspring",
     "tendon_range",
-    "tendon_stiffness",
-    "tendon_damping",
     recompute=RecomputeLevel.set_const,
 )
 def team_dynamics_randomization(
@@ -131,22 +125,6 @@ def team_dynamics_randomization(
     # terms always use team_state and therefore never confuse it with agent zero.
     env.quad_state = team.agents[0]
 
-    # A fixed 2000 N/m, 80 N.s/m cable is stable when its effective mass is the
-    # 0.75 kg scaffold payload, but it launches the smallest randomized 21 g
-    # quad in explicit Euler. Scale to the lightest member of each team so the
-    # spring and damping stability ratios stay bounded across the 40x mass range.
-    # The scene defaults remain ceilings for sufficiently heavy teams.
-    min_quad_mass = torch.stack([agent.mass[ids] for agent in team.agents], dim=1).amin(dim=1)
-    dt = env.physics_dt
-    cable_stiffness = torch.minimum(
-        torch.full_like(min_quad_mass, MAX_CABLE_STIFFNESS),
-        CABLE_STIFFNESS_SAFETY * min_quad_mass / (dt * dt),
-    )
-    cable_damping = torch.minimum(
-        torch.full_like(min_quad_mass, MAX_CABLE_DAMPING),
-        CABLE_DAMPING_SAFETY * min_quad_mass / dt,
-    )
-
     payload_cfg = payload_asset_cfg
     payload_cfg.resolve(env.scene)
     # A cfg selecting all bodies deliberately retains ``slice(None)`` after
@@ -194,12 +172,6 @@ def team_dynamics_randomization(
     # fields in mujoco-warp.  The upper endpoint is the cable rest length.
     env.sim.model.tendon_lengthspring[e, t, 1] = length
     env.sim.model.tendon_range[e, t, 1] = length
-    # mujoco-warp model tensors do not support two advanced-index axes with a
-    # per-row RHS reliably: that silently replicated one environment's value
-    # across the batch. Assign one tendon column at a time instead.
-    for cable_id in cable_ids:
-        env.sim.model.tendon_stiffness[ids, cable_id] = cable_stiffness
-        env.sim.model.tendon_damping[ids, cable_id] = cable_damping
     team.cable_length[ids] = length
     team.active_mask[ids] = True
 
@@ -225,3 +197,63 @@ def sample_agent_failure(
     if len(fail_envs):
         chosen = torch.randint(N_AGENTS, (len(fail_envs),), device=env.device)
         mask[fail_envs, chosen] = False
+
+
+def settle_quads_for_cable_slack(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor | None,
+    slack_ratio: float = 0.95,
+) -> None:
+    """Place each quad directly above its own attach point, cable slightly slack.
+
+    This event deliberately runs after every root-reset event and **fully owns
+    quad placement** -- horizontal and vertical.
+
+    Horizontal: each quad is centred over its own attach site, so the spawn
+    triangle always equals the payload's attachment triangle. That geometry was
+    previously duplicated in three places -- ``payload.xml``'s attach sites,
+    ``builder.py``'s ``_QUAD_POSITIONS``, and hard-coded per-quad pose ranges in
+    the env config -- and they silently disagreed: enlarging the first two left
+    the third at the old 0.15 m radius, so quads still spawned 0.2598 m apart and
+    315 of 512 envs began already inside the collision bound. Deriving x/y from
+    the live attach sites removes that class of bug entirely.
+
+    Vertical: cable rest lengths are independent per agent, whereas payload
+    translation gives all three tendons the same geometric length under a
+    symmetric attachment layout. Moving each quad vertically preserves that DR
+    axis and gives every cable the same relative slack.
+    """
+    if not 0.0 < slack_ratio <= 1.0:
+        raise ValueError("slack_ratio must lie in (0, 1]")
+    ids = _ids(env, env_ids)
+    if not hasattr(env, "team_state"):
+        raise RuntimeError("team_state must exist before settling cable geometry")
+
+    # Root-reset events have written qpos/qvel but not necessarily refreshed
+    # derived site poses. Refresh once, then use the actual hook/attach geometry
+    # rather than hard-coding spawn heights or attachment offsets.
+    env.sim.forward()
+    payload = env.scene["payload"]
+    target_lengths = slack_ratio * env.team_state.cable_length[ids]
+
+    for i in range(N_AGENTS):
+        quad = env.scene[f"quad_{i}"]
+        hook_id = quad.find_sites(("hook",))[0][0]
+        attach_id = payload.find_sites((f"attach_{i}",))[0][0]
+        hook = quad.data.site_pos_w[ids, hook_id]
+        attach = payload.data.site_pos_w[ids, attach_id]
+
+        # Centre the hook over its attach point, so the cable is exactly vertical
+        # and the spawn triangle equals the attachment triangle by construction.
+        horizontal_offset = attach[:, :2] - hook[:, :2]
+        # With the hook centred, the whole cable length is vertical.
+        vertical = target_lengths[:, i]
+        desired_hook_z = attach[:, 2] + vertical
+
+        root_pose = quad.data.root_link_pose_w[ids].clone()
+        root_pose[:, :2] += horizontal_offset
+        root_pose[:, 2] += desired_hook_z - hook[:, 2]
+        quad.write_root_link_pose_to_sim(root_pose, env_ids=ids)
+        quad.write_root_link_velocity_to_sim(
+            torch.zeros(len(ids), 6, device=env.device), env_ids=ids,
+        )

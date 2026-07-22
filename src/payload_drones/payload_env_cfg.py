@@ -27,6 +27,7 @@ from payload_drones.mdp.rewards import reward_terms
 from payload_drones.mdp.team_scaling import (
     initialize_team_state,
     sample_agent_failure,
+    settle_quads_for_cable_slack,
     team_dynamics_randomization,
 )
 from payload_drones.mdp.terminations import termination_terms
@@ -91,15 +92,25 @@ def make_payload_env_cfg(
             mode="reset",
             params={
                 "asset_cfg": SceneEntityCfg("payload"),
-                # Spawn the suspended load above the ground while preserving its
-                # scene-default x/y offsets and orientation.
-                "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.2, 0.2), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)},
+                # Spawn the load inside the goal altitude band (0.8-2.0 m), not
+                # just clear of the floor. At the previous z=0.2 the payload sat
+                # 5 cm above the 0.15 m ground-contact termination and below
+                # every sampled goal, so episodes ended in ~11 of 1000 steps
+                # before the policy could learn anything. Quads follow
+                # automatically: the settle event places each one at its own
+                # cable length above the payload.
+                "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (1.0, 1.4), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)},
                 "velocity_range": {},
             },
         ),
         "reset_quad_0_root": EventTermCfg(func=reset_root_state_uniform, mode="reset", params={"asset_cfg": SceneEntityCfg("quad_0"), "pose_range": {"x": (0.15, 0.15), "y": (0.0, 0.0), "z": (0.96, 0.96), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)}, "velocity_range": {}}),
         "reset_quad_1_root": EventTermCfg(func=reset_root_state_uniform, mode="reset", params={"asset_cfg": SceneEntityCfg("quad_1"), "pose_range": {"x": (-0.075, -0.075), "y": (0.129904, 0.129904), "z": (0.96, 0.96), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)}, "velocity_range": {}}),
         "reset_quad_2_root": EventTermCfg(func=reset_root_state_uniform, mode="reset", params={"asset_cfg": SceneEntityCfg("quad_2"), "pose_range": {"x": (-0.075, -0.075), "y": (-0.129904, -0.129904), "z": (0.96, 0.96), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)}, "velocity_range": {}}),
+        # Must follow all root-state resets: independent rest lengths require
+        # independent quad heights to begin with equal relative cable slack.
+        "settle_quads_for_cable_slack": EventTermCfg(
+            func=settle_quads_for_cable_slack, mode="reset", params={"slack_ratio": 0.95},
+        ),
     }
 
     return ManagerBasedRlEnvCfg(

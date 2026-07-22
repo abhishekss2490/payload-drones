@@ -5,11 +5,15 @@
             <!-- 0.75 kg nominal; payload mass is deliberately a later DR field. -->
             <inertial mass="0.75" diaginertia="0.012 0.012 0.020" pos="0 0 0"/>
             <freejoint name="root"/>
-            <geom name="payload_geom" type="box" size="0.18 0.18 0.06" rgba="0.8 0.35 0.15 1"/>
-            <!-- Equilateral triangle, radius 0.15 m, on the top plane. -->
-            <site name="attach_0" type="sphere" pos="0.15 0 0.06" size="0.012" rgba="1 0.2 0.2 1"/>
-            <site name="attach_1" type="sphere" pos="-0.075 0.129904 0.06" size="0.012" rgba="0.2 1 0.2 1"/>
-            <site name="attach_2" type="sphere" pos="-0.075 -0.129904 0.06" size="0.012" rgba="0.2 0.2 1 1"/>
+            <geom name="payload_geom" type="box" size="0.34 0.34 0.06" rgba="0.8 0.35 0.15 1"/>
+            <!-- Equilateral triangle, radius 0.30 m, on the top plane.
+                 Sized so pairwise quad separation (R*sqrt(3) = 0.520 m) clears the
+                 worst-case physical overlap of two 0.16 m-arm quads (0.32 m).
+                 At the previous R=0.15 the quads spawned 0.2598 m apart against
+                 a 0.25 m collision threshold -- 1 cm from termination at t=0. -->
+            <site name="attach_0" type="sphere" pos="0.3 0 0.06" size="0.012" rgba="1 0.2 0.2 1"/>
+            <site name="attach_1" type="sphere" pos="-0.15 0.259808 0.06" size="0.012" rgba="0.2 1 0.2 1"/>
+            <site name="attach_2" type="sphere" pos="-0.15 -0.259808 0.06" size="0.012" rgba="0.2 0.2 1 1"/>
         </body>
     </worldbody>
 </mujoco>

@@ -35,8 +35,11 @@ Already implemented in `src/payload_drones/scene/builder.py`. Do not rewrite. It
 3 quads (`quad_0`, `quad_1`, `quad_2`) + `payload`, joined by 3 spatial-tendon cables, with
 air drag set on the root spec.
 
-Cables are **deadband springs** (`springlength = [0, L]`), not limit constraints — validated in
-`SCAFFOLD_FINDINGS.md`. Simulation config: `njmax=128`, `nconmax=64`, Euler, `timestep=0.005`.
+Cables are explicit **upper-limit constraints** (`limited=True`, `range=[0, L]`,
+`solref_limit=[0.01, 1.0]`), not explicit springs. They are slack below `L` and pull at the upper
+bound; `stiffness=damping=0`. The prior spring-only characterization was wrong because MuJoCo's
+auto-limit inference had already enabled a tendon limit whenever `range` was set. Simulation config:
+`njmax=128`, `nconmax=64`, Euler, `timestep=0.005`.
 
 Entity naming is fixed: quads are `quad_{i}` for `i in 0..2`, payload is `payload`.
 Cable tendons are `cable_{i}`. Sites are `quad_{i}/hook` and `payload/attach_{i}`.
@@ -150,53 +153,22 @@ sometimes exceeds it.
 **Acceptance:** over 4096 sampled teams, 100 % must satisfy
 `sum_i(max_thrust_i) > 1.5 * (sum_i(m_i) + m_payload) * g`, and 100 % must have `payload_mass > 0`.
 
-## 2bb. Cable stiffness and damping must scale with the lightest quad (added 2026-07-22)
+## 2bb. Cable is a solver constraint, not a scaled spring (corrected 2026-07-22)
 
-**The fixed cable parameters `stiffness=2000 N/m`, `damping=80 N.s/m` are numerically unstable for
-the lighter half of the randomization range, and diverge within 2 simulation steps.**
+The previous stiffness/damping scaling rule was a workaround for the wrong mechanism. An explicit
+Euler-integrated spring must be soft enough for the lightest 26 g quadrotor, making it a bungee; a
+stiff version injects energy and diverges. Cables now use MuJoCo's unilateral upper tendon limit,
+which is resolved by the constraint solver and does not require mass-dependent `stiffness` or
+`damping` randomization.
 
-Found by running the actual trainer, not by any unit test. Diagnostic at 4096 envs with random
-actions: step 0 max quad-payload distance 0.775 m; **step 2: 6.922 m with max |qvel| 47,497**; step
-19: 2600 m. A quadrotor cannot fly 6.9 m in 0.01 s — the cable spring launches it, then the growing
-extension feeds back as a larger force.
+`team_dynamics_randomization` continues to randomize only each cable's physical length by writing
+the upper entries of `tendon_lengthspring` and `tendon_range`. The fixed scene model sets
+`limited=True`, `stiffness=damping=0`, `solref_limit=[0.01, 1.0]`, and default `solimp_limit`.
+The three tendon rows are included in the measured `nefc=79`, below `njmax=128`.
 
-Those values were chosen against the 0.75 kg payload of the scaffold test, where the quads were
-*pinned* (effective mass 0.75 kg, `omega*dt = 0.26`, stable). They were never re-checked against the
-**lightest randomized quad at 0.021 kg**. For explicit Euler at `dt = 0.005`:
-
-| | value | Euler stability limit at m = 0.021 kg | over by |
-| --- | ---: | ---: | ---: |
-| stiffness `k` | 2000 N/m | `0.25*m/dt^2` = 210 N/m | 9.5x |
-| damping `c` | 80 N.s/m | `0.5*m/dt` = 2.1 N.s/m | **38x** |
-
-Damping is the worse offender: `(c/m)*dt = 19` where stability needs `< 2`.
-
-`implicitfast` would absorb this, but mujoco-warp raises
-`NotImplementedError: Implicit integrators and fluid model not implemented` — it is incompatible
-with the air-drag fluid model (`density=1.2`, `viscosity=1.8e-5`) inherited from the base repo. Do
-not silently drop air drag to enable it.
-
-### Required approach
-
-Scale the cable parameters per env with **that team's lightest quad**, in
-`team_dynamics_randomization` after the quads are sampled, writing `tendon_stiffness` and
-`tendon_damping`:
-
-```
-m_min = min_i(m_i)                                  # per env
-k = min(2000.0, K_SAFETY * m_min / dt**2)           # K_SAFETY = 0.25
-c = min(  80.0, C_SAFETY * m_min / dt)              # C_SAFETY = 0.5
-```
-
-This holds `omega*dt` roughly constant across the randomization range instead of letting it vary
-40x, and it is physically sensible: a tether sized for a 20 g micro-quad is not the one used for an
-800 g machine. The existing constants become ceilings for heavy teams rather than fixed values.
-
-Do **not** fix this by narrowing `arm_length_range` — heterogeneity is the entire point of the
-project, and trading it away for numerical convenience would hollow out H1-H4.
-
-**Acceptance:** 4096 envs, random actions, 400 steps: all states finite, and max quad-payload
-distance stays bounded (no env exceeds ~5 m, versus 2600 m before).
+**Acceptance:** static constrained hang has millimetre-scale stretch; 4096 envs under random
+actions for 400 steps remain finite with max quad-payload separation below 5 m. Do **not** narrow
+the arm-length range to achieve this.
 
 ## 2c. Trajectory speed cap for initial testing (added 2026-07-22)
 

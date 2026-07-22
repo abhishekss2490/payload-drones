@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import torch
+import warp as wp
+import mujoco
 
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
@@ -131,16 +133,20 @@ def critic(env: ManagerBasedRlEnv, command_name: str = "payload_pose") -> torch.
 def team_probe(env: ManagerBasedRlEnv) -> torch.Tensor:
     """Analysis channel: tension, thrust fraction, and payload wrench residual."""
     tension_parts = []
-    payload = _payload(env)
+    # Cables are upper-limit constraints, so their physical force lives in the
+    # solver EFC rows rather than stiffness * extension. Warp keeps capacity-
+    # sized EFC buffers; only indices below per-world ``nefc`` are valid.
+    efc = env.sim.wp_data.efc
+    efc_force = wp.to_torch(efc.force)
+    efc_type = wp.to_torch(efc.type)
+    efc_id = wp.to_torch(efc.id)
+    row = torch.arange(efc_force.shape[1], device=env.device)[None, :]
+    valid = row < env.sim.data.nefc[:, None]
+    tendon_limit_type = int(mujoco.mjtConstraint.mjCNSTR_LIMIT_TENDON)
     for i in range(N_AGENTS):
-        q = env.scene[f"quad_{i}"]
-        hook = q.data.site_pos_w[:, q.find_sites(("hook",))[0][0]]
-        attach = payload.data.site_pos_w[:, payload.find_sites((f"attach_{i}",))[0][0]]
-        cable_len = (attach - hook).norm(dim=-1)
         tendon_id = env.scene.spec.tendon(f"cable_{i}").id
-        rest = env.sim.model.tendon_lengthspring[:, tendon_id, 1]
-        stiffness = env.sim.model.tendon_stiffness[:, tendon_id]
-        tension_parts.append(torch.relu(cable_len - rest) * stiffness)
+        is_this_tendon = valid & (efc_type == tendon_limit_type) & (efc_id == tendon_id)
+        tension_parts.append(torch.where(is_this_tendon, efc_force, 0.0).sum(dim=1).clamp_min(0.0))
     tension = torch.stack(tension_parts, dim=-1)
     thrust = torch.zeros(env.num_envs, N_AGENTS, 4, device=env.device)
     if "team_thrust" in env.action_manager.active_terms:

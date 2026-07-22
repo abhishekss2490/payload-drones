@@ -1,0 +1,196 @@
+--- git commit ---
+80bcedcb309fd11449e6af43a6359395df2163d4
+
+
+--- git status ---
+On branch main
+Your branch is ahead of 'origin/main' by 1 commit.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   src/payload_drones/mdp/team_scaling.py
+	modified:   src/payload_drones/payload_env_cfg.py
+	modified:   tests/test_env_smoke.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	logs/rsl_rl/payload_rma_phase1/2026-07-22_22-07-49/
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/src/payload_drones/mdp/team_scaling.py b/src/payload_drones/mdp/team_scaling.py
+index 9a1047b..400d65e 100644
+--- a/src/payload_drones/mdp/team_scaling.py
++++ b/src/payload_drones/mdp/team_scaling.py
+@@ -225,3 +225,51 @@ def sample_agent_failure(
+     if len(fail_envs):
+         chosen = torch.randint(N_AGENTS, (len(fail_envs),), device=env.device)
+         mask[fail_envs, chosen] = False
++
++
++def settle_quads_for_cable_slack(
++    env: ManagerBasedRlEnv,
++    env_ids: torch.Tensor | None,
++    slack_ratio: float = 0.95,
++) -> None:
++    """Place each quad at its own cable's small, initially slack length.
++
++    This event deliberately runs after every root-reset event.  Cable rest
++    lengths are independent per agent, whereas payload translation gives all
++    three tendons the same geometric length under the symmetric attachment
++    layout.  Moving each quad vertically preserves that DR axis and gives every
++    cable the same relative slack.
++    """
++    if not 0.0 < slack_ratio <= 1.0:
++        raise ValueError("slack_ratio must lie in (0, 1]")
++    ids = _ids(env, env_ids)
++    if not hasattr(env, "team_state"):
++        raise RuntimeError("team_state must exist before settling cable geometry")
++
++    # Root-reset events have written qpos/qvel but not necessarily refreshed
++    # derived site poses. Refresh once, then use the actual hook/attach geometry
++    # rather than hard-coding spawn heights or attachment offsets.
++    env.sim.forward()
++    payload = env.scene["payload"]
++    target_lengths = slack_ratio * env.team_state.cable_length[ids]
++
++    for i in range(N_AGENTS):
++        quad = env.scene[f"quad_{i}"]
++        hook_id = quad.find_sites(("hook",))[0][0]
++        attach_id = payload.find_sites((f"attach_{i}",))[0][0]
++        hook = quad.data.site_pos_w[ids, hook_id]
++        attach = payload.data.site_pos_w[ids, attach_id]
++
++        horizontal_sq = (hook[:, :2] - attach[:, :2]).square().sum(dim=-1)
++        target_sq = target_lengths[:, i].square()
++        if bool((horizontal_sq > target_sq).any()):
++            raise RuntimeError("cable target is shorter than its horizontal hook/attach separation")
++        vertical = torch.sqrt((target_sq - horizontal_sq).clamp_min(0.0))
++        desired_hook_z = attach[:, 2] + vertical
++
++        root_pose = quad.data.root_link_pose_w[ids].clone()
++        root_pose[:, 2] += desired_hook_z - hook[:, 2]
++        quad.write_root_link_pose_to_sim(root_pose, env_ids=ids)
++        quad.write_root_link_velocity_to_sim(
++            torch.zeros(len(ids), 6, device=env.device), env_ids=ids,
++        )
+diff --git a/src/payload_drones/payload_env_cfg.py b/src/payload_drones/payload_env_cfg.py
+index fc887d6..fdd5fec 100644
+--- a/src/payload_drones/payload_env_cfg.py
++++ b/src/payload_drones/payload_env_cfg.py
+@@ -27,6 +27,7 @@ from payload_drones.mdp.rewards import reward_terms
+ from payload_drones.mdp.team_scaling import (
+     initialize_team_state,
+     sample_agent_failure,
++    settle_quads_for_cable_slack,
+     team_dynamics_randomization,
+ )
+ from payload_drones.mdp.terminations import termination_terms
+@@ -100,6 +101,11 @@ def make_payload_env_cfg(
+         "reset_quad_0_root": EventTermCfg(func=reset_root_state_uniform, mode="reset", params={"asset_cfg": SceneEntityCfg("quad_0"), "pose_range": {"x": (0.15, 0.15), "y": (0.0, 0.0), "z": (0.96, 0.96), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)}, "velocity_range": {}}),
+         "reset_quad_1_root": EventTermCfg(func=reset_root_state_uniform, mode="reset", params={"asset_cfg": SceneEntityCfg("quad_1"), "pose_range": {"x": (-0.075, -0.075), "y": (0.129904, 0.129904), "z": (0.96, 0.96), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)}, "velocity_range": {}}),
+         "reset_quad_2_root": EventTermCfg(func=reset_root_state_uniform, mode="reset", params={"asset_cfg": SceneEntityCfg("quad_2"), "pose_range": {"x": (-0.075, -0.075), "y": (-0.129904, -0.129904), "z": (0.96, 0.96), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)}, "velocity_range": {}}),
++        # Must follow all root-state resets: independent rest lengths require
++        # independent quad heights to begin with equal relative cable slack.
++        "settle_quads_for_cable_slack": EventTermCfg(
++            func=settle_quads_for_cable_slack, mode="reset", params={"slack_ratio": 0.95},
++        ),
+     }
+ 
+     return ManagerBasedRlEnvCfg(
+diff --git a/tests/test_env_smoke.py b/tests/test_env_smoke.py
+index 80d797e..3c86660 100644
+--- a/tests/test_env_smoke.py
++++ b/tests/test_env_smoke.py
+@@ -168,6 +168,57 @@ def test_4_domain_randomization_reaches_every_model_field():
+             has_cross_env_variation(value, field)
+ 
+ 
++def test_5_reset_geometry_gives_each_cable_small_relative_slack():
++    """Independent cable lengths require independently placed quad roots.
++
++    This reads the hook/attach geometry and model spring constants directly;
++    TeamState alone cannot establish that the simulated reset is safe.
++    """
++    env = _env(512)
++    env.reset(seed=424242)
++    env.sim.forward()
++    payload = env.scene["payload"]
++
++    lengths = []
++    rest_lengths = []
++    implied_forces = []
++    quad_root_z = []
++    for agent in range(3):
++        quad = env.scene[f"quad_{agent}"]
++        hook_id = quad.find_sites(("hook",))[0][0]
++        attach_id = payload.find_sites((f"attach_{agent}",))[0][0]
++        geometric_length = (quad.data.site_pos_w[:, hook_id] - payload.data.site_pos_w[:, attach_id]).norm(dim=-1)
++        tendon_id = env.scene.spec.tendon(f"cable_{agent}").id
++        actual_tendon_length = env.sim.data.ten_length[:, tendon_id]
++        rest_length = env.sim.model.tendon_lengthspring[:, tendon_id, 1]
++        stiffness = env.sim.model.tendon_stiffness[:, tendon_id]
++
++        # The explicit site distance is a geometry cross-check; ten_length is
++        # the simulator quantity whose range/spring law is actually evaluated.
++        assert torch.allclose(actual_tendon_length, geometric_length, atol=1.0e-6)
++        lengths.append(actual_tendon_length)
++        rest_lengths.append(rest_length)
++        implied_forces.append(stiffness * (geometric_length - rest_length).clamp_min(0.0))
++        quad_root_z.append(quad.data.root_link_pos_w[:, 2])
++
++    length = torch.stack(lengths, dim=1)
++    rest = torch.stack(rest_lengths, dim=1)
++    force = torch.stack(implied_forces, dim=1)
++    root_z = torch.stack(quad_root_z, dim=1)
++    relative_length = length / rest
++
++    # Check every cable individually: an aggregate can hide a taut cable behind
++    # two slack ones.  The configured target is exactly 0.95, with deliberately
++    # loose bounds for different tensor/device precisions.
++    assert torch.all(length <= rest + 1.0e-6)
++    assert torch.all((relative_length >= 0.93) & (relative_length <= 0.97))
++    assert force.amax() <= 1.0e-5
++    # The ground plane is z=0; root height leaves a substantial margin even for
++    # the shortest sampled cable, while the event itself derives it from the
++    # live attachment positions rather than this test's spawn constants.
++    assert root_z.amin() > 0.25
++
++
+ def test_4_policy_has_no_payload_mass_or_cable_length_leak():
+     env = _env(8)
+     env.reset()
+@@ -312,3 +363,29 @@ def test_13_payload_trajectory_speed_cap_is_respected():
+     command = env.command_manager.get_term("payload_pose")
+     peak_speed = command.velocity_ref.norm(dim=-1).amax()
+     assert peak_speed <= 1.05 * command.cfg.max_payload_speed
++
++
++def test_14_gpu_cable_reset_stays_finite_for_400_random_steps():
++    """Full-scale regression for the former step-zero cable launch.
++
++    This is intentionally GPU-only: 4096 x 400 is the training-relevant
++    operating point and is prohibitively slow on the CPU fallback.
++    """
++    if not torch.cuda.is_available():
++        pytest.skip("CUDA is unavailable in this execution environment")
++    torch.manual_seed(98765)
++    env = ManagerBasedRlEnv(
++        make_payload_env_cfg(num_envs=4096, include_history=False, include_team_probe=False),
++        device="cuda",
++    )
++    obs, _ = env.reset(seed=98765)
++    max_separation = torch.zeros((), device=env.device)
++    payload = env.scene["payload"]
++    for _ in range(400):
++        obs, reward, _, _, _ = env.step(2.0 * torch.rand(env.num_envs, 12, device=env.device) - 1.0)
++        assert torch.isfinite(reward).all()
++        assert all(torch.isfinite(value).all() for value in obs.values())
++        for agent in range(3):
++            separation = (env.scene[f"quad_{agent}"].data.root_link_pos_w - payload.data.root_link_pos_w).norm(dim=-1)
++            max_separation = torch.maximum(max_separation, separation.amax())
++    assert max_separation.item() < 5.0

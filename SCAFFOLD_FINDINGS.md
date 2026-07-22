@@ -17,14 +17,18 @@ Cables are **spatial tendons** between `quad_{i}/hook` and `payload/attach_{i}`,
 in `SceneCfg.spec_fn` after mjlab's `attach()` (they cross entity boundaries, so they cannot live in
 any single entity's spec). Site names were established by inspecting the assembled spec, not guessed.
 
-Each tendon is a **deadband spring**: `tendon_lengthspring` is a *range*, so force is zero below the
-rest length and pulls above it — a correct unilateral cable. `limited=True` additionally installs a
-hard limit constraint. Both mechanisms are currently active (see Open items).
+Each tendon is an explicitly enabled **upper-limit constraint**: `limited=True`,
+`range=[0, L]`, and `solref_limit=[0.01, 1.0]`. It is slack below `L` and pulls
+only at its upper bound, so it is unilateral by construction. `stiffness=0` and
+`damping=0`: an explicit Euler-integrated spring cannot be both stable for a
+26 g quadrotor and credibly inextensible. The prior spring-only characterization
+was wrong: setting `range` had already enabled MuJoCo's auto limit, so the old
+implementation unintentionally combined incompatible mechanisms.
 
 | Check | Measurement | Result |
 | --- | ---: | --- |
 | Compiles, `ntendon == 3` | 3 tendons, range `[0, 0.6]` | pass |
-| Taut (payload 5 mm lower) | length 0.605 m, 10.0 N/cable | pass, pull-only |
+| Taut (payload 5 mm lower) | active tendon-limit constraint row | pass, pull-only |
 | Slack (payload 100 mm higher) | length 0.500 m, 0 N/cable | pass |
 | Symmetric static load share | 2.4525 N/cable = `0.75·9.81/3` exactly | pass |
 
@@ -36,10 +40,11 @@ released, 4000 steps (20 s at 5 ms), energy diagnostics enabled via `mjENBL_ENER
 | Check | Measurement | Result |
 | --- | ---: | --- |
 | Finite after 4000 steps | no NaN | pass |
-| Oscillation decays | amplitude ratio late/early = 0.12, 0.06, 0.06 | pass |
-| Tension sum = payload weight | 7.3535 N vs 7.3575 N — **0.05 % error** | pass |
-| No energy injection | energy ratio 0.9911 (dissipative) | pass |
-| Payload z drift, last 25 % | 1.05 mm | pass |
+| Oscillation decays | amplitude ratio late/early = 0.166, 0.076, 0.083 | pass |
+| Tension sum = payload weight | 7.3853 N vs 7.3575 N — **0.38 % error** | pass |
+| Constraint stretch, final 25 % | 1.611 mm peak | pass |
+| Numerical energy drift | ratio 1.0024 (below 1 % tolerance) | pass |
+| Payload z drift, last 25 % | 1.10 mm | pass |
 
 ## GPU throughput (RTX A4000, 16 GB)
 
@@ -73,12 +78,8 @@ contribute only 3 rows — they are not the dominant allocation cost.
 
 ## Open items for the next stage
 
-1. **Spring and limit are redundant.** The deadband spring already gives correct unilateral cable
-   behaviour; `limited=True` adds a hard limit constraint on top. Dropping `limited` would remove
-   3 constraint rows per env, drop `njmax` back to ~79, and give a smoother (better-conditioned)
-   contact-free system for RL. Worth an A/B before committing.
+1. **Constraint cable is deliberate.** Keep its 3 upper-limit rows; `njmax=128` has headroom over
+   the measured `nefc=79`. Do not reintroduce an explicit spring without a different integrator.
 2. **True peak memory is still unmeasured** — fix the instrumentation before sizing the largest run.
-3. **Cable stiffness/damping (2000 N/m, 80) are unvalidated defaults.** They should be justified
-   against a real cable, or randomized as part of DR.
-4. **Attachment geometry is untuned.** Verify 6-DoF controllability of the payload — particularly
+3. **Attachment geometry is untuned.** Verify 6-DoF controllability of the payload — particularly
    yaw authority, which is the weak axis for three near-vertical cables.

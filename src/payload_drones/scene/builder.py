@@ -16,12 +16,15 @@ AIR_DENSITY: Final = 1.2
 AIR_VISCOSITY: Final = 1.8e-5
 N_CABLES: Final = 3
 DEFAULT_CABLE_LENGTH: Final = 0.60
-DEFAULT_CABLE_STIFFNESS: Final = 2_000.0
-DEFAULT_CABLE_DAMPING: Final = 80.0
+# A cable is an inextensible unilateral constraint, not a stiff Euler-integrated
+# spring.  The limit solver uses this reference time to resolve its upper bound.
+CABLE_LIMIT_SOLREF: Final = (0.01, 1.0)
+# Must match payload.xml's attach-site triangle exactly: each hook sits directly
+# above its own attach point, so the cables are vertical.
 _QUAD_POSITIONS: Final = (
-    (0.15, 0.0, 0.76),
-    (-0.075, 0.129904, 0.76),
-    (-0.075, -0.129904, 0.76),
+    (0.3, 0.0, 0.76),
+    (-0.15, 0.259808, 0.76),
+    (-0.15, -0.259808, 0.76),
 )
 
 
@@ -37,16 +40,19 @@ def _set_air_drag_and_cables(spec: mujoco.MjSpec) -> None:
         tendon = spec.add_tendon(name=f"cable_{index}")
         tendon.wrap_site(hook)
         tendon.wrap_site(attach)
-        # Deadband spring only, NO `limited=True`. `lengthspring` as a range
-        # already gives correct unilateral cable behaviour (zero force below the
-        # rest length, pulls above it). Adding a hard limit constraint on top is
-        # redundant: it costs 3 constraint rows per env and makes the system
-        # stiffer/worse-conditioned for RL, for no change in physics.
+        # A real cable is inextensible and unilateral.  The upper tendon limit
+        # is therefore the load-bearing mechanism; it pulls only once the
+        # geometric length reaches L and never pushes while slack.  Make the
+        # flag explicit instead of relying on MuJoCo's auto-limit inference.
+        tendon.limited = True
         tendon.springlength = [0.0, DEFAULT_CABLE_LENGTH]
         tendon.range = [0.0, DEFAULT_CABLE_LENGTH]
-        # The MjSpec Python binding represents both parameters as 3-vectors.
-        tendon.stiffness = np.full(3, DEFAULT_CABLE_STIFFNESS)
-        tendon.damping = np.full(3, DEFAULT_CABLE_DAMPING)
+        # Do not add an explicit spring/damper: its force is integrated by
+        # Euler and becomes either unstable (stiff) or a bungee (soft) for the
+        # randomized 20--800 g quadrotors. Limit forces are solver constraints.
+        tendon.stiffness = np.zeros(3)
+        tendon.damping = np.zeros(3)
+        tendon.solref_limit = CABLE_LIMIT_SOLREF
 
 
 def make_payload_scene_cfg(

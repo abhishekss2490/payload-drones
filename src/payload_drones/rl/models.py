@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
+from torch import nn
 from tensordict import TensorDict
 
 from rsl_rl.models import MLPModel
@@ -92,6 +95,29 @@ class _MARLModelBase(MLPModel):
         """Encode exactly once per environment, then view-broadcast over agents."""
         z_traj = self.trajectory_encoder(trajectory)
         return z_traj.unsqueeze(1).expand(-1, N_AGENTS, -1).reshape(-1, self.traj_latent_dim)
+
+    def _init_hover_bias(self, hover_action: float = 0.40) -> None:
+        """Bias the initial actor mean toward hover thrust rather than half throttle.
+
+        Motor thrust is quadratic, ``F = max_thrust * u**2``, and the action term
+        maps ``a in [-1,1]`` to ``u = 0.5a + 0.5``. So a zero action gives
+        ``u = 0.5`` and only ``0.25 * max_thrust``. With loaded team TWR in
+        1.5-3.0 that is 0.38-0.75 of the team's weight: an untrained policy sinks
+        from the first step, every episode, regardless of what it observes.
+
+        Hover needs ``u = sqrt(1/margin)``, i.e. ``a = 2*sqrt(1/margin) - 1``.
+        At the median loaded TWR of 2.04 that is ``a ~ 0.40``. `_squashed_forward`
+        applies tanh to the MLP output, so the pre-tanh bias is ``atanh(0.40)``.
+
+        This is a constant, identical for every environment, so it leaks no
+        privileged per-env information -- it just starts the policy near the
+        middle of the feasible hover band instead of below all of it.
+        """
+        if self.is_centralized_critic:
+            return
+        last = [m for m in self.mlp.modules() if isinstance(m, nn.Linear)][-1]
+        with torch.no_grad():
+            last.bias.fill_(math.atanh(hover_action))
 
     def _critic_latent(self, obs: TensorDict) -> torch.Tensor:
         return self.obs_normalizer(obs["critic"])
@@ -197,6 +223,7 @@ class MARLTeacherModel(_MARLModelBase):
         self.dynamics_encoder = MLP(DYNAMICS_DIM, dyn_latent_dim, dyn_encoder_dims, activation=activation)
         if obs_normalization:
             self.obs_normalizer = EmpiricalNormalization(self._get_latent_dim())
+        self._init_hover_bias()
 
     def get_latent(
         self, obs: TensorDict, masks: torch.Tensor | None = None, hidden_state: HiddenState = None,
@@ -277,6 +304,7 @@ class MARLStudentModel(_MARLModelBase):
         )
         if obs_normalization:
             self.obs_normalizer = EmpiricalNormalization(self._get_latent_dim())
+        self._init_hover_bias()
 
     def _fold_history(self, history: torch.Tensor) -> torch.Tensor:
         return fold_agents(history, self.history_length * self.sa_dim).view(

@@ -11,14 +11,8 @@ import warp as wp
 wp.config.kernel_cache_dir = "/tmp/payload-drones-warp-cache"
 
 from mjlab.envs import ManagerBasedRlEnv
-from payload_drones.mdp.observations import agent_dynamics, payload_trajectory, policy
+from payload_drones.mdp.observations import agent_dynamics, payload_trajectory, policy, team_probe
 from payload_drones.mdp.rewards import reward_terms
-from payload_drones.mdp.team_scaling import (
-    CABLE_DAMPING_SAFETY,
-    CABLE_STIFFNESS_SAFETY,
-    MAX_CABLE_DAMPING,
-    MAX_CABLE_STIFFNESS,
-)
 from payload_drones.payload_env_cfg import make_payload_env_cfg
 
 
@@ -144,28 +138,67 @@ def test_4_domain_randomization_reaches_every_model_field():
     has_cross_env_variation(model.body_mass[:, payload_body], "payload.body_mass")
     has_cross_env_variation(model.body_inertia[:, payload_body], "payload.body_inertia")
 
-    min_mass = torch.stack([state.mass for state in env.team_state.agents], dim=1).amin(dim=1)
-    expected_k = torch.minimum(
-        torch.full_like(min_mass, MAX_CABLE_STIFFNESS),
-        CABLE_STIFFNESS_SAFETY * min_mass / env.physics_dt**2,
-    )
-    expected_c = torch.minimum(
-        torch.full_like(min_mass, MAX_CABLE_DAMPING),
-        CABLE_DAMPING_SAFETY * min_mass / env.physics_dt,
-    )
     for cable in range(3):
         tendon = spec.tendon(f"cable_{cable}").id
         assert torch.allclose(model.tendon_lengthspring[:, tendon, 1], env.team_state.cable_length[:, cable])
         assert torch.allclose(model.tendon_range[:, tendon, 1], env.team_state.cable_length[:, cable])
-        assert torch.allclose(model.tendon_stiffness[:, tendon], expected_k)
-        assert torch.allclose(model.tendon_damping[:, tendon], expected_c)
+        assert torch.count_nonzero(model.tendon_stiffness[:, tendon]) == 0
+        assert torch.count_nonzero(model.tendon_damping[:, tendon]) == 0
         for field, value in {
             f"cable_{cable}.tendon_lengthspring": model.tendon_lengthspring[:, tendon],
             f"cable_{cable}.tendon_range": model.tendon_range[:, tendon],
-            f"cable_{cable}.tendon_stiffness": model.tendon_stiffness[:, tendon],
-            f"cable_{cable}.tendon_damping": model.tendon_damping[:, tendon],
         }.items():
             has_cross_env_variation(value, field)
+
+
+def test_5_reset_geometry_gives_each_cable_small_relative_slack():
+    """Independent cable lengths require independently placed quad roots.
+
+    This reads the hook/attach geometry and model spring constants directly;
+    TeamState alone cannot establish that the simulated reset is safe.
+    """
+    env = _env(512)
+    env.reset(seed=424242)
+    env.sim.forward()
+    payload = env.scene["payload"]
+
+    lengths = []
+    rest_lengths = []
+    quad_root_z = []
+    for agent in range(3):
+        quad = env.scene[f"quad_{agent}"]
+        hook_id = quad.find_sites(("hook",))[0][0]
+        attach_id = payload.find_sites((f"attach_{agent}",))[0][0]
+        geometric_length = (quad.data.site_pos_w[:, hook_id] - payload.data.site_pos_w[:, attach_id]).norm(dim=-1)
+        tendon_id = env.scene.spec.tendon(f"cable_{agent}").id
+        actual_tendon_length = env.sim.data.ten_length[:, tendon_id]
+        rest_length = env.sim.model.tendon_lengthspring[:, tendon_id, 1]
+
+        # The explicit site distance is a geometry cross-check; ten_length is
+        # the simulator quantity whose range/spring law is actually evaluated.
+        assert torch.allclose(actual_tendon_length, geometric_length, atol=1.0e-6)
+        lengths.append(actual_tendon_length)
+        rest_lengths.append(rest_length)
+        quad_root_z.append(quad.data.root_link_pos_w[:, 2])
+
+    length = torch.stack(lengths, dim=1)
+    rest = torch.stack(rest_lengths, dim=1)
+    root_z = torch.stack(quad_root_z, dim=1)
+    relative_length = length / rest
+
+    # Check every cable individually: an aggregate can hide a taut cable behind
+    # two slack ones.  The configured target is exactly 0.95, with deliberately
+    # loose bounds for different tensor/device precisions.
+    assert torch.all(length <= rest + 1.0e-6)
+    assert torch.all((relative_length >= 0.93) & (relative_length <= 0.97))
+    # Strict slack means the upper unilateral limit cannot exert an initial
+    # constraint force. Verify the solver-row-backed analysis probe is zero;
+    # ``nefc`` alone also counts unrelated actuator rows.
+    assert torch.count_nonzero(team_probe(env)[:, :3]) == 0
+    # The ground plane is z=0; root height leaves a substantial margin even for
+    # the shortest sampled cable, while the event itself derives it from the
+    # live attachment positions rather than this test's spawn constants.
+    assert root_z.amin() > 0.25
 
 
 def test_4_policy_has_no_payload_mass_or_cable_length_leak():
@@ -312,3 +345,29 @@ def test_13_payload_trajectory_speed_cap_is_respected():
     command = env.command_manager.get_term("payload_pose")
     peak_speed = command.velocity_ref.norm(dim=-1).amax()
     assert peak_speed <= 1.05 * command.cfg.max_payload_speed
+
+
+def test_14_gpu_cable_reset_stays_finite_for_400_random_steps():
+    """Full-scale regression for the former step-zero cable launch.
+
+    This is intentionally GPU-only: 4096 x 400 is the training-relevant
+    operating point and is prohibitively slow on the CPU fallback.
+    """
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is unavailable in this execution environment")
+    torch.manual_seed(98765)
+    env = ManagerBasedRlEnv(
+        make_payload_env_cfg(num_envs=4096, include_history=False, include_team_probe=False),
+        device="cuda",
+    )
+    obs, _ = env.reset(seed=98765)
+    max_separation = torch.zeros((), device=env.device)
+    payload = env.scene["payload"]
+    for _ in range(400):
+        obs, reward, _, _, _ = env.step(2.0 * torch.rand(env.num_envs, 12, device=env.device) - 1.0)
+        assert torch.isfinite(reward).all()
+        assert all(torch.isfinite(value).all() for value in obs.values())
+        for agent in range(3):
+            separation = (env.scene[f"quad_{agent}"].data.root_link_pos_w - payload.data.root_link_pos_w).norm(dim=-1)
+            max_separation = torch.maximum(max_separation, separation.amax())
+    assert max_separation.item() < 5.0

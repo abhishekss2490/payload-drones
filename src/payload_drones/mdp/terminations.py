@@ -26,11 +26,26 @@ def any_quad_tumbling(env: ManagerBasedRlEnv, max_ang_vel: float = 50.0) -> torc
     return ((rates > max_ang_vel) & active).any(-1)
 
 
-def quad_collision(env: ManagerBasedRlEnv, min_separation: float = 0.25) -> torch.Tensor:
+def quad_collision(env: ManagerBasedRlEnv, clearance: float = 0.05) -> torch.Tensor:
+    """Terminate when two rotor disks would physically intersect.
+
+    The separation bound must depend on the pair's own arm lengths, which
+    randomize over 0.05-0.16 m: two 0.16 m quads overlap below 0.32 m, while two
+    0.05 m quads are still 0.20 m clear at that distance. A single fixed
+    threshold is therefore either too lax for large quads or unsurvivable for
+    small ones -- the previous fixed 0.25 m was the latter, sitting 1 cm below
+    the 0.2598 m spawn separation so episodes died at t=0 regardless of policy.
+    """
     pos = torch.stack([env.scene[f"quad_{i}"].data.root_link_pos_w for i in range(N_AGENTS)], 1)
     d = torch.cdist(pos, pos)
     pair = torch.triu_indices(N_AGENTS, N_AGENTS, offset=1, device=env.device)
-    return (d[:, pair[0], pair[1]] < min_separation).any(-1)
+    dist = d[:, pair[0], pair[1]]
+
+    if not hasattr(env, "team_state"):
+        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    arms = torch.stack([s.arm_length for s in env.team_state.agents], dim=1)
+    min_sep = arms[:, pair[0]] + arms[:, pair[1]] + clearance
+    return (dist < min_sep).any(-1)
 
 
 def cable_overextension(env: ManagerBasedRlEnv, factor: float = 1.5) -> torch.Tensor:
