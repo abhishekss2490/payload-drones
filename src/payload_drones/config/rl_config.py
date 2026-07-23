@@ -44,7 +44,7 @@ def payload_rma_phase1_cfg() -> RslRlOnPolicyRunnerCfg:
     actor = MARLTeacherModelCfg(obs_normalization=False, distribution_cfg=_SHARED_STD.copy())
     critic = MARLTeacherModelCfg(obs_normalization=False)
     return RslRlOnPolicyRunnerCfg(
-        seed=4551, num_steps_per_env=NUM_STEPS_PER_ENV, max_iterations=600, save_interval=100,
+        seed=4551, num_steps_per_env=NUM_STEPS_PER_ENV, max_iterations=2000, save_interval=100,
         experiment_name="payload_rma_phase1", logger="wandb", wandb_project="payload-drones",
         clip_actions=1.0, actor=actor, critic=critic,
         algorithm=RslRlPpoAlgorithmCfg(

@@ -90,9 +90,20 @@ def cable_slack_penalty(env: ManagerBasedRlEnv) -> torch.Tensor:
 # ``--env.rewards.payload-position-tracking.params.std`` flag can select the
 # early capture basin; the curriculum only overwrites it at later stages.
 reward_terms = {
+    # Coarse position std stays WIDE at 0.75 for capture during learning, then
+    # the curriculum bounds it down (0.60 -> 0.45) only after iteration 1000,
+    # once the policy can already fly. Keeping it wide early preserves gradient
+    # at the 0.7-1.8 m the aligned-spawn baseline actually drifted to; tightening
+    # it from the start would starve the very gradient that closes the offset.
+    # (broad-capture at 1.5 was falsified on the cluster: it drifted, not tracked.)
     "payload_position_tracking": RewardTermCfg(func=payload_position_tracking, weight=0.30, params={"std": 0.75}),
     "payload_position_fine": RewardTermCfg(func=payload_position_tracking, weight=0.20, params={"std": 0.20}),
-    "payload_orientation_tracking": RewardTermCfg(func=payload_orientation_tracking, weight=0.20, params={"std": 0.75}),
+    # Orientation std widened 0.75 -> 1.0 so there is gradient where the payload
+    # actually sits: at 1.1 rad error std=0.75 gives ~0.007 (no signal) while
+    # std=1.0 gives ~0.06. The orientation curriculum that tightened this toward
+    # 0.30 is removed (see curriculum.py) -- tightening removed the little signal
+    # the weakly-actuated attitude axis had before it was ever being held.
+    "payload_orientation_tracking": RewardTermCfg(func=payload_orientation_tracking, weight=0.20, params={"std": 1.0}),
     "payload_velocity_tracking": RewardTermCfg(func=payload_velocity_tracking, weight=0.15, params={"std": 1.0}),
     "payload_ang_vel_penalty": RewardTermCfg(func=payload_ang_vel_penalty, weight=0.15, params={"std": 2.0}),
     # At the worst bounded shaping values, a live step still has positive

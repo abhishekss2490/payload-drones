@@ -51,7 +51,7 @@ uv run --no-sync python -c "import torch; print('torch      :', torch.__version_
 
 echo "----------------------------------------------------------"
 uv run --no-sync train Mjlab-PayloadTransport-RMA-Phase1 \
-  --agent.max-iterations 1500 \
+  --agent.max-iterations 2000 \
   --agent.logger wandb \
   --agent.experiment-name "$RUN_NAME" \
   "${EXTRA_ARGS[@]}"

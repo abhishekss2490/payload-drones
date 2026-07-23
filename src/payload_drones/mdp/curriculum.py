@@ -40,53 +40,52 @@ _ITER = 256
 curriculum_terms = {
     "payload_position_tracking_std": CurriculumTermCfg(
         func=reward_curriculum,
-        # Deliberately no step-zero stage: the reward config's initial std is a
-        # direct CLI override for the broad-capture ablation.
+        # No step-zero stage: the reward config's initial std (0.75) is held
+        # through the first 1000 iterations, so the policy learns to fly under a
+        # wide capture kernel before it is bounded down. It is also the direct
+        # CLI override point for the broad-capture ablation.
         params={"reward_name": "payload_position_tracking", "stages": [
-            {"step": 500 * _ITER, "params": {"std": 0.60}},
-            {"step": 1000 * _ITER, "params": {"std": 0.50}},
+            {"step": 1000 * _ITER, "params": {"std": 0.60}},
+            {"step": 1500 * _ITER, "params": {"std": 0.45}},
         ]},
     ),
     "payload_position_fine_std": CurriculumTermCfg(
         func=reward_curriculum,
         params={"reward_name": "payload_position_fine", "stages": [
-            {"step": 500 * _ITER, "params": {"std": 0.15}},
-            {"step": 1000 * _ITER, "params": {"std": 0.10}},
+            {"step": 1000 * _ITER, "params": {"std": 0.15}},
+            {"step": 1500 * _ITER, "params": {"std": 0.10}},
         ]},
     ),
-    "payload_orientation_tracking_std": CurriculumTermCfg(
-        func=reward_curriculum,
-        params={"reward_name": "payload_orientation_tracking", "stages": [
-            {"step": 500 * _ITER, "params": {"std": 0.50}},
-            {"step": 1000 * _ITER, "params": {"std": 0.30}},
-        ]},
-    ),
+    # No orientation-std curriculum: attitude is weakly actuated (three
+    # near-vertical, pull-only cables), so the kernel is held wide at 1.0 rather
+    # than tightened. Tightening it toward 0.30 removed gradient at the 1+ rad
+    # tilts the payload actually reaches, before attitude was ever being held.
     "payload_velocity_tracking_std": CurriculumTermCfg(
         func=reward_curriculum,
         params={"reward_name": "payload_velocity_tracking", "stages": [
-            {"step": 500 * _ITER, "params": {"std": 0.75}},
-            {"step": 1000 * _ITER, "params": {"std": 0.50}},
+            {"step": 1000 * _ITER, "params": {"std": 0.75}},
+            {"step": 1500 * _ITER, "params": {"std": 0.50}},
         ]},
     ),
     "payload_ang_vel_std": CurriculumTermCfg(
         func=reward_curriculum,
         params={"reward_name": "payload_ang_vel_penalty", "stages": [
-            {"step": 500 * _ITER, "params": {"std": 1.50}},
-            {"step": 1000 * _ITER, "params": {"std": 1.00}},
+            {"step": 1000 * _ITER, "params": {"std": 1.50}},
+            {"step": 1500 * _ITER, "params": {"std": 1.00}},
         ]},
     ),
     "action_rate_weight": CurriculumTermCfg(
         func=reward_curriculum,
         params={"reward_name": "action_rate", "stages": [
-            {"step": 500 * _ITER, "weight": -0.001},
-            {"step": 1000 * _ITER, "weight": -0.002},
+            {"step": 1000 * _ITER, "weight": -0.001},
+            {"step": 1500 * _ITER, "weight": -0.002},
         ]},
     ),
     "body_rate_weight": CurriculumTermCfg(
         func=reward_curriculum,
         params={"reward_name": "body_rate_penalty", "stages": [
-            {"step": 500 * _ITER, "weight": -0.001},
-            {"step": 1000 * _ITER, "weight": -0.002},
+            {"step": 1000 * _ITER, "weight": -0.001},
+            {"step": 1500 * _ITER, "weight": -0.002},
         ]},
     ),
 }

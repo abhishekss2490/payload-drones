@@ -339,7 +339,7 @@ def test_contact_terminations_match_simulated_contacts():
     assert quad_collision(env).tolist() == [False, False, True]
 
 
-def test_reward_curriculum_tightens_at_500_and_1000_iterations():
+def test_reward_curriculum_holds_wide_then_tightens_after_1000_iterations():
     env = _env(2)
     env.reset()
 
@@ -355,31 +355,42 @@ def test_reward_curriculum_tightens_at_500_and_1000_iterations():
             )
         }
 
-    assert snapshot() == {
+    initial = {
         "payload_position_tracking": 0.75,
         "payload_position_fine": 0.20,
-        "payload_orientation_tracking": 0.75,
+        "payload_orientation_tracking": 1.0,   # held constant: no attitude curriculum
         "payload_velocity_tracking": 1.0,
         "payload_ang_vel_penalty": 2.0,
     }
+    assert snapshot() == initial
+
+    # Curriculum does NOT start until 1000 iterations: at 500 nothing has moved.
     env.common_step_counter = 500 * 256
+    env.curriculum_manager.compute()
+    assert snapshot() == initial
+    assert env.reward_manager.get_term_cfg("action_rate").weight == 0.0
+    assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == 0.0
+
+    # First tightening at 1000. Orientation stays wide at 1.0.
+    env.common_step_counter = 1000 * 256
     env.curriculum_manager.compute()
     assert snapshot() == {
         "payload_position_tracking": 0.60,
         "payload_position_fine": 0.15,
-        "payload_orientation_tracking": 0.50,
+        "payload_orientation_tracking": 1.0,
         "payload_velocity_tracking": 0.75,
         "payload_ang_vel_penalty": 1.50,
     }
     assert env.reward_manager.get_term_cfg("action_rate").weight == -0.001
     assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == -0.001
 
-    env.common_step_counter = 1000 * 256
+    # Final tightening at 1500, held for the last 500 of the 2000-iter run.
+    env.common_step_counter = 1500 * 256
     env.curriculum_manager.compute()
     assert snapshot() == {
-        "payload_position_tracking": 0.50,
+        "payload_position_tracking": 0.45,
         "payload_position_fine": 0.10,
-        "payload_orientation_tracking": 0.30,
+        "payload_orientation_tracking": 1.0,
         "payload_velocity_tracking": 0.50,
         "payload_ang_vel_penalty": 1.00,
     }
@@ -391,10 +402,14 @@ def test_sweep_parameters_are_direct_config_overrides():
     env_cfg = make_payload_env_cfg(num_envs=2)
     command_cfg = env_cfg.commands["payload_pose"]
     assert env_cfg.rewards["payload_position_tracking"].params["std"] == 0.75
+    assert env_cfg.rewards["payload_orientation_tracking"].params["std"] == 1.0
+    # Attitude is held wide with no tightening curriculum (weak cable authority).
+    assert "payload_orientation_tracking_std" not in env_cfg.curriculum
     assert command_cfg.hover_fraction_initial == 0.40
     assert command_cfg.hover_fraction_final == 0.15
 
     rl_cfg = payload_rma_phase1_cfg()
+    assert rl_cfg.max_iterations == 2000
     assert rl_cfg.algorithm.learning_rate == 1.0e-3
     assert rl_cfg.algorithm.num_learning_epochs == 5
     assert rl_cfg.algorithm.num_mini_batches == 16
