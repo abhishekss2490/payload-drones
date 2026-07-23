@@ -250,6 +250,7 @@ def quadrotor_dynamics_randomization(
     u_perturbation_ranges: dict | None = None,
     motor_noise_xy_frac: float = 0.05,
     motor_noise_z_frac: float = 0.025,
+    arm_length: torch.Tensor | None = None,
 ) -> None:
     """Randomise all arm-length-correlated quadrotor dynamics parameters.
 
@@ -275,7 +276,32 @@ def quadrotor_dynamics_randomization(
     n_bodies = len(body_indices)
 
     # --- 1. Sample arm_length ---
-    arm_length = scale_cfg.sample_arm_length(n, device)
+    # Team-level randomization can supply correlated per-environment arms.
+    # Keep the default draw here for the single-quad event and all existing
+    # callers which intentionally want independent arm lengths.
+    if arm_length is None:
+        arm_length = scale_cfg.sample_arm_length(n, device)
+    else:
+        if arm_length.ndim != 1 or arm_length.shape[0] != n:
+            raise ValueError(
+                f"arm_length override must have shape ({n},), got {tuple(arm_length.shape)}"
+            )
+        # Compare device TYPE, not the full device: a tensor created with
+        # device="cuda" reports device cuda:0 (explicit index), while env.device
+        # is often the index-less "cuda", so `!=` would spuriously reject a
+        # correctly-placed override. This only bit on GPU (cpu has no index),
+        # which a CPU-only sandbox could not catch.
+        if arm_length.device.type != torch.device(device).type:
+            raise ValueError(
+                f"arm_length override must be on env.device ({device}), got {arm_length.device}"
+            )
+        if not bool(torch.isfinite(arm_length).all()):
+            raise ValueError("arm_length override must be finite")
+        lo, hi = scale_cfg.arm_length_range
+        if not bool(((arm_length >= lo) & (arm_length <= hi)).all()):
+            raise ValueError(
+                f"arm_length override must lie inside ScaleCfg.arm_length_range={scale_cfg.arm_length_range}"
+            )
 
     # --- 2. Polynomial fits → sample mass, inertia ---
     def _sample_param(avg_fit: list[float], std_fit: list[float]) -> torch.Tensor:

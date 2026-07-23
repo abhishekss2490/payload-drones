@@ -28,6 +28,7 @@ from payload_drones.mdp.team_scaling import (
     initialize_team_state,
     sample_agent_failure,
     team_dynamics_randomization,
+    validate_team_dynamics_randomization_cfg,
 )
 from payload_drones.mdp.terminations import termination_terms
 from payload_drones.scene.builder import make_payload_scene_cfg
@@ -43,6 +44,11 @@ def make_payload_env_cfg(
     include_history: bool = False,
     include_team_probe: bool = True,
     play: bool = False,
+    arm_sampling_mode: str = "correlated",
+    base_arm_range: tuple[float, float] = (0.060, 0.145),
+    arm_relative_spread: float = 0.10,
+    loaded_twr_floor: float = 2.0,
+    loaded_twr_ceiling: float = 3.0,
 ) -> ManagerBasedRlEnvCfg:
     """Build the fixed-three-agent environment; default failure is evaluation-off.
 
@@ -67,6 +73,14 @@ def make_payload_env_cfg(
     # different curriculum TWR bins. Every feasibility number in env_spec.md was
     # measured at (2.0, 4.0).
     scale_cfg = ScaleCfg(twr_range=(2.0, 4.0)) if scale_cfg is None else scale_cfg
+    validate_team_dynamics_randomization_cfg(
+        scale_cfg,
+        arm_sampling_mode,
+        base_arm_range,
+        arm_relative_spread,
+        loaded_twr_floor,
+        loaded_twr_ceiling,
+    )
     observations = {
         "policy": policy_group,
         "agent_dynamics": agent_dynamics_group,
@@ -91,7 +105,15 @@ def make_payload_env_cfg(
         "team_dynamics_randomization": EventTermCfg(
             func=team_dynamics_randomization,
             mode="reset",
-            params={"scale_cfg": scale_cfg, "payload_asset_cfg": SceneEntityCfg("payload", body_names=("payload",))},
+            params={
+                "scale_cfg": scale_cfg,
+                "payload_asset_cfg": SceneEntityCfg("payload", body_names=("payload",)),
+                "arm_sampling_mode": arm_sampling_mode,
+                "base_arm_range": base_arm_range,
+                "arm_relative_spread": arm_relative_spread,
+                "loaded_twr_floor": loaded_twr_floor,
+                "loaded_twr_ceiling": loaded_twr_ceiling,
+            },
         ),
         "sample_agent_failure": EventTermCfg(
             func=sample_agent_failure, mode="reset", params={"p_failure": p_failure, "min_active": 2}

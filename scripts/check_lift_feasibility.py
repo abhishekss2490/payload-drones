@@ -1,10 +1,8 @@
 """Measure conditional payload sampling through the ScaleCfg distribution.
 
-Payload mass is derived from a sampled loaded team thrust-to-weight ratio, so
-each randomized team has a non-zero payload and enough collective lift for the
-requested 1.5x margin.  This standalone check deliberately follows the same
-mass/thrust distribution as the reset event and reports the resulting payload
-distribution to catch accidental collapse toward zero.
+Payload mass is derived from a sampled loaded team thrust-to-weight ratio. This
+standalone check follows the reset event's correlated-arm and soft-floor
+sampling closely enough to catch accidental collapse toward zero.
 
 Run: ``uv run --no-sync python scripts/check_lift_feasibility.py``
 """
@@ -19,17 +17,21 @@ GRAVITY = 9.81
 N_AGENTS = 3
 N_SAMPLES = 200_000
 MAX_PAYLOAD_MASS = 2.5
+BASE_ARM_RANGE = (0.060, 0.145)
+ARM_RELATIVE_SPREAD = 0.10
+LOADED_TWR_FLOOR = 2.5
+LOADED_TWR_CEILING = 3.0
 
 
-def sample_quads(n: int, cfg: ScaleCfg, device: str) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return (mass, max_total_thrust) for n independently sampled quadrotors."""
-    arm = cfg.sample_arm_length(n, device)
-
+def sample_quads(
+    arm: torch.Tensor, cfg: ScaleCfg, device: str
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return (mass, max_total_thrust) for one independently randomized agent."""
     avg = torch_polyval(cfg._to_coeffs(cfg.avg_mass_fit, device), arm)
     std = torch_polyval(cfg._to_coeffs(cfg.std_mass_fit, device), arm).clamp(min=0)
     mass = (torch.empty_like(avg).uniform_(-1, 1) * std + avg).clamp(min=0.01)
 
-    twr = torch.empty(n, device=device).uniform_(*cfg.twr_range)
+    twr = torch.empty_like(mass).uniform_(*cfg.twr_range)
     max_thrust = twr * mass * GRAVITY
     return mass, max_thrust
 
@@ -41,9 +43,11 @@ def sample_payload(
     """Return (payload_mass, realized_loaded_team_twr)."""
     liftable_mass = team_thrust / GRAVITY
     unloaded_twr = liftable_mass / team_mass
-    sampled_margin = 1.5 + torch.rand_like(unloaded_twr) * (
-        torch.minimum(torch.full_like(unloaded_twr, 3.0), 0.9 * unloaded_twr) - 1.5
+    cap = torch.minimum(
+        torch.full_like(unloaded_twr, LOADED_TWR_CEILING), 0.9 * unloaded_twr
     )
+    floor = torch.minimum(torch.full_like(cap, LOADED_TWR_FLOOR), cap)
+    sampled_margin = floor + torch.rand_like(unloaded_twr) * (cap - floor)
     payload = (liftable_mass / sampled_margin - team_mass).clamp_max(MAX_PAYLOAD_MASS)
     realized_margin = liftable_mass / (team_mass + payload)
     return payload, realized_margin
@@ -54,16 +58,23 @@ def main() -> None:
     cfg = ScaleCfg()
     torch.manual_seed(0)
 
-    print(f"arm_length range : {cfg.arm_length_range}")
+    print(f"base arm range   : {BASE_ARM_RANGE} m")
+    print(f"arm spread       : +/-{ARM_RELATIVE_SPREAD:.0%}")
     print(f"twr range        : {cfg.twr_range}")
-    print("loaded TWR       : U(1.5, min(3.0, 0.9 * unloaded_team_twr))")
+    print("loaded TWR       : U(min(2.5, cap), cap), cap=min(3.0, 0.9 * unloaded_team_twr)")
     print(f"payload cap      : {MAX_PAYLOAD_MASS} kg (upper clamp only)")
     print()
 
     mass = torch.empty(N_SAMPLES, N_AGENTS)
     thrust = torch.empty(N_SAMPLES, N_AGENTS)
+    base_arm = torch.empty(N_SAMPLES, device=device).uniform_(*BASE_ARM_RANGE)
     for i in range(N_AGENTS):
-        m, t = sample_quads(N_SAMPLES, cfg, device)
+        arm = base_arm * (
+            1 + torch.empty(N_SAMPLES, device=device).uniform_(
+                -ARM_RELATIVE_SPREAD, ARM_RELATIVE_SPREAD
+            )
+        )
+        m, t = sample_quads(arm, cfg, device)
         mass[:, i], thrust[:, i] = m, t
 
     team_mass = mass.sum(dim=1)
@@ -78,9 +89,11 @@ def main() -> None:
     print()
 
     payload, realized_margin = sample_payload(team_mass, team_thrust)
-    margin_feasible = team_thrust > 1.5 * (team_mass + payload) * GRAVITY
-    print("=== conditional-sampling feasibility ===")
-    print(f"teams feasible at 1.5x margin : {margin_feasible.float().mean() * 100:.2f} %")
+    unloaded_twr = team_thrust / (team_mass * GRAVITY)
+    soft_floor = torch.minimum(torch.full_like(unloaded_twr, LOADED_TWR_FLOOR), 0.9 * unloaded_twr)
+    margin_feasible = realized_margin >= soft_floor - 1e-6
+    print("=== soft-floor feasibility ===")
+    print(f"teams meeting their soft floor : {margin_feasible.float().mean() * 100:.2f} %")
     print(f"teams with positive payload    : {(payload > 0).float().mean() * 100:.2f} %")
     print(f"realized loaded team TWR       : {realized_margin.min():.4f} .. {realized_margin.max():.4f} "
           f"(median {realized_margin.median():.4f})")

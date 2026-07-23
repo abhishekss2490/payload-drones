@@ -11,6 +11,7 @@ import warp as wp
 wp.config.kernel_cache_dir = "/tmp/payload-drones-warp-cache"
 
 from mjlab.envs import ManagerBasedRlEnv
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from payload_drones.mdp.observations import agent_dynamics, payload_trajectory, policy, team_probe
 from payload_drones.mdp.rewards import body_rate_penalty, reward_terms
 from payload_drones.mdp.terminations import (
@@ -19,14 +20,25 @@ from payload_drones.mdp.terminations import (
     quad_collision,
 )
 from payload_drones.config.rl_config import payload_rma_phase1_cfg
+from payload_drones.mdp.quad_scaling import ScaleCfg
+from payload_drones.mdp.team_scaling import team_dynamics_randomization
 from payload_drones.payload_env_cfg import make_payload_env_cfg
 
 
-def _env(num_envs: int, device: str = "cpu") -> ManagerBasedRlEnv:
+def _env(
+    num_envs: int,
+    device: str = "cpu",
+    arm_sampling_mode: str = "correlated",
+) -> ManagerBasedRlEnv:
     # These environment-contract tests exercise every observation group. The
     # training configs deliberately gate history off for Phase 1 to avoid
     # RolloutStorage allocating an unused 6300-dim tensor.
-    return ManagerBasedRlEnv(make_payload_env_cfg(num_envs=num_envs, include_history=True), device=device)
+    cfg = make_payload_env_cfg(
+        num_envs=num_envs,
+        include_history=True,
+        arm_sampling_mode=arm_sampling_mode,
+    )
+    return ManagerBasedRlEnv(cfg, device=device)
 
 
 def test_1_construct_reset_and_random_steps_are_finite():
@@ -55,14 +67,60 @@ def test_2_observation_group_shapes():
     assert {name: tuple(value.shape) for name, value in obs.items()} == expected
 
 
-def test_3_per_team_arm_lengths_are_independent():
-    env = _env(512)
+@pytest.mark.parametrize("arm_sampling_mode", ["correlated", "independent"])
+def test_3_team_arm_sampling_modes_preserve_physics_dr(arm_sampling_mode: str):
+    env = _env(512, arm_sampling_mode=arm_sampling_mode)
     env.reset()
     arms = torch.stack([state.arm_length for state in env.team_state.agents], dim=1)
-    # Independent uniform samples occasionally land close together.  Requiring
-    # every one of 512 teams to exceed a threshold would reject correct IID
-    # sampling; test the population mean instead.
-    assert arms.std(dim=1).mean() > 0.02
+    mean_within_team_std = arms.std(dim=1).mean()
+    pairwise_correlation = torch.corrcoef(arms.T)[
+        torch.triu_indices(3, 3, offset=1).unbind()
+    ].mean()
+
+    if arm_sampling_mode == "correlated":
+        # B~U(.060,.145) with independent +/-10% offsets has about 5.4 mm
+        # within-team std and strong across-env pairwise correlation.
+        assert 0.003 < mean_within_team_std < 0.008
+        assert pairwise_correlation > 0.85
+    else:
+        # The control remains exactly the original iid U(.050,.160) draw.
+        assert mean_within_team_std > 0.02
+        assert abs(pairwise_correlation) < 0.12
+
+    # Correlating only arms must not turn the underlying DR into a shared
+    # model buffer.  Check elementwise TeamState/model agreement for both
+    # modes and independently sampled body-mass variation across envs.
+    for agent in range(3):
+        body = env.scene.spec.body(f"quad_{agent}/quad").id
+        mass = env.sim.model.body_mass[:, body]
+        assert torch.allclose(mass, env.team_state.agents[agent].mass)
+        assert mass.std() > 0
+
+
+def test_3a_correlated_arm_configuration_rejects_endpoint_clipping():
+    with pytest.raises(ValueError, match="hard arm range"):
+        make_payload_env_cfg(
+            base_arm_range=(0.060, 0.150), arm_relative_spread=0.10
+        )
+
+
+def test_3b_team_partial_reset_leaves_unselected_arm_samples_unchanged():
+    env = _env(16)
+    env.reset(seed=314159)
+    previous_arms = [agent.arm_length.clone() for agent in env.team_state.agents]
+    previous_masses = [agent.mass.clone() for agent in env.team_state.agents]
+    ids = torch.tensor([1, 5, 9, 13], device=env.device)
+    team_dynamics_randomization(
+        env,
+        ids,
+        scale_cfg=ScaleCfg(twr_range=(2.0, 4.0)),
+        payload_asset_cfg=SceneEntityCfg("payload", body_names=("payload",)),
+    )
+    selected = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    selected[ids] = True
+    for agent, old_arm, old_mass in zip(env.team_state.agents, previous_arms, previous_masses):
+        assert torch.equal(agent.arm_length[~selected], old_arm[~selected])
+        assert torch.equal(agent.mass[~selected], old_mass[~selected])
 
 
 def test_4_domain_randomization_reaches_every_model_field():
@@ -505,15 +563,20 @@ def test_11_static_setpoint_fallback_keeps_zero_velocity_reference():
     assert torch.count_nonzero(obs["payload_trajectory"].reshape(env.num_envs, 200, 6)[..., 3:]) == 0
 
 
-def test_12_conditional_payload_sampling_is_margin_feasible():
-    """The corrected loaded-TWR sampling must keep every team controllable."""
+def test_12_conditional_payload_sampling_has_a_feasibility_preserving_soft_floor():
+    """Every actual reset sample has positive payload and meets its soft floor."""
     env = _env(4096)
     env.reset(seed=1729)
     team = env.team_state
     total_thrust = sum(agent.max_thrust_per_motor * 4.0 for agent in team.agents)
     total_quad_mass = sum(agent.mass for agent in team.agents)
-    assert torch.all(total_thrust > 1.5 * (total_quad_mass + team.payload_mass) * 9.81)
+    unloaded_twr = total_thrust / (total_quad_mass * 9.81)
+    # Loaded-TWR floor is 2.0 (raised from the old 1.5 to lighten payloads and
+    # drop marginal teams, but kept below 2.5 to keep payloads heavy enough that
+    # capability-driven load sharing is still exercised -- see the H1 rationale).
+    soft_floor = torch.minimum(torch.full_like(unloaded_twr, 2.0), 0.9 * unloaded_twr)
     assert torch.all(team.payload_mass > 0)
+    assert torch.all(team.margin >= soft_floor - 1.0e-6)
     assert torch.allclose(team.margin, total_thrust / ((total_quad_mass + team.payload_mass) * 9.81))
 
 

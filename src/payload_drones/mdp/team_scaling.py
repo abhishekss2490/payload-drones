@@ -55,6 +55,40 @@ def _ids(env: ManagerBasedRlEnv, env_ids: torch.Tensor | None) -> torch.Tensor:
     return torch.arange(env.num_envs, device=env.device) if env_ids is None else env_ids
 
 
+def validate_team_dynamics_randomization_cfg(
+    scale_cfg: ScaleCfg,
+    arm_sampling_mode: str = "correlated",
+    base_arm_range: tuple[float, float] = (0.060, 0.145),
+    arm_relative_spread: float = 0.10,
+    loaded_twr_floor: float = 2.0,
+    loaded_twr_ceiling: float = 3.0,
+    max_payload_mass: float = 2.5,
+) -> None:
+    """Reject invalid sampling bounds before an environment is constructed."""
+    if max_payload_mass <= 0:
+        raise ValueError("max_payload_mass must be positive")
+    if arm_sampling_mode not in {"correlated", "independent"}:
+        raise ValueError("arm_sampling_mode must be 'correlated' or 'independent'")
+    if loaded_twr_floor <= 0 or loaded_twr_ceiling <= 0:
+        raise ValueError("loaded TWR bounds must be positive")
+    if loaded_twr_floor > loaded_twr_ceiling:
+        raise ValueError("loaded_twr_floor must not exceed loaded_twr_ceiling")
+
+    hard_arm_lo, hard_arm_hi = scale_cfg.arm_length_range
+    base_lo, base_hi = base_arm_range
+    if base_lo > base_hi or arm_relative_spread < 0:
+        raise ValueError("base_arm_range must be ordered and arm_relative_spread non-negative")
+    # Do not clamp: endpoint clipping would change the declared distribution.
+    if arm_sampling_mode == "correlated" and (
+        base_lo * (1 - arm_relative_spread) < hard_arm_lo
+        or base_hi * (1 + arm_relative_spread) > hard_arm_hi
+    ):
+        raise ValueError(
+            "base_arm_range and arm_relative_spread must remain inside "
+            f"the hard arm range {scale_cfg.arm_length_range}"
+        )
+
+
 @requires_model_fields(
     # The base event is called from this wrapper, so its metadata is not visible
     # to EventManager. Repeat the complete contract here: EventManager expands
@@ -78,6 +112,11 @@ def team_dynamics_randomization(
     scale_cfg: ScaleCfg,
     payload_asset_cfg: SceneEntityCfg = SceneEntityCfg("payload", body_names=("payload",)),
     max_payload_mass: float = 2.5,
+    arm_sampling_mode: str = "correlated",
+    base_arm_range: tuple[float, float] = (0.060, 0.145),
+    arm_relative_spread: float = 0.10,
+    loaded_twr_floor: float = 2.0,
+    loaded_twr_ceiling: float = 3.0,
     cable_length_range: tuple[float, float] = (0.5, 0.8),
     iquat_max_angle: float = 0.175,
 ) -> None:
@@ -90,11 +129,31 @@ def team_dynamics_randomization(
     optional upper payload cap can only reduce the payload, so the value stored
     in TeamState is recomputed afterwards as the *realized* loaded ratio.
     """
-    if max_payload_mass <= 0:
-        raise ValueError("max_payload_mass must be positive")
+    validate_team_dynamics_randomization_cfg(
+        scale_cfg,
+        arm_sampling_mode,
+        base_arm_range,
+        arm_relative_spread,
+        loaded_twr_floor,
+        loaded_twr_ceiling,
+        max_payload_mass,
+    )
     initialize_team_state(env, env_ids)
     ids = _ids(env, env_ids)
     team: TeamState = env.team_state
+
+    if arm_sampling_mode == "correlated":
+        base_arm = torch.empty(len(ids), device=env.device).uniform_(*base_arm_range)
+        arm_lengths = [
+            base_arm * (1 + torch.empty(len(ids), device=env.device).uniform_(
+                -arm_relative_spread, arm_relative_spread
+            ))
+            for _ in range(N_AGENTS)
+        ]
+    else:
+        # Preserve the original extreme-heterogeneity control exactly: each
+        # quad event makes its own IID U(ScaleCfg.arm_length_range) draw.
+        arm_lengths = [None] * N_AGENTS
 
     for i in range(N_AGENTS):
         env.quad_state = team.agents[i]
@@ -119,6 +178,7 @@ def team_dynamics_randomization(
             site_cfg=site_cfg,
             actuator_cfg=actuator_cfg,
             iquat_max_angle=iquat_max_angle,
+            arm_length=arm_lengths[i],
         )
 
     # Keep a backwards-compatible alias for tools expecting a quad_state.  Team
@@ -141,11 +201,12 @@ def team_dynamics_randomization(
     team_mass = sum(agent.mass[ids] for agent in team.agents)
     liftable_mass = sum(agent.max_thrust_per_motor[ids] * 4.0 for agent in team.agents) / GRAVITY
     unloaded_twr = liftable_mass / team_mass.clamp_min(1.0e-8)
-    # torch.uniform_ accepts scalar bounds, whereas the specified upper bound
-    # is per-team.  Draw U(0, 1) and scale each team's interval instead.
-    sampled_margin = 1.5 + torch.rand(len(ids), device=env.device) * (
-        torch.minimum(torch.full_like(unloaded_twr, 3.0), 0.9 * unloaded_twr) - 1.5
-    )
+    # The nominal 2.5 loaded-TWR floor becomes a feasibility-preserving soft
+    # floor for weak teams.  The 0.9 factor still makes payload strictly
+    # positive, while strong teams sample their loaded ratio in [2.5, 3.0].
+    cap = torch.minimum(torch.full_like(unloaded_twr, loaded_twr_ceiling), 0.9 * unloaded_twr)
+    floor = torch.minimum(torch.full_like(cap, loaded_twr_floor), cap)
+    sampled_margin = floor + torch.rand(len(ids), device=env.device) * (cap - floor)
     mass = (liftable_mass / sampled_margin - team_mass).clamp_max(max_payload_mass)
     if not bool((mass > 0).all()):
         raise RuntimeError("conditional payload sampling produced a non-positive mass")
