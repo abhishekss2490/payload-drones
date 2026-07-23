@@ -256,6 +256,11 @@ class TeamThrustAction(ActionTerm):
         for term in self._terms:
             term.apply_actions()
 
+    def debug_vis_motors(self, visualizer: "DebugVisualizer") -> None:
+        """Draw the existing per-quad motor-capacity gauges for the whole team."""
+        for term in self._terms:
+            term.debug_vis_motors(visualizer)
+
     def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         if env_ids is None:
             env_ids = slice(None)

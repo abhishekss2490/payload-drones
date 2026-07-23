@@ -19,6 +19,9 @@ build-backend = "uv_build"
 [project.entry-points."mjlab.tasks"]
 payload_drones = "payload_drones.config"
 
+[project.scripts]
+play-stats = "payload_drones.play_stats:main"
+
 [tool.uv.sources]
 torch = { index = "pytorch-cu129" }
 warp-lang = { index = "nvidia", marker = "sys_platform != 'darwin'" }

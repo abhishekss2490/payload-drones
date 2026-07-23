@@ -11,3 +11,6 @@ __pycache__/
 
 # Training run outputs
 logs/
+
+# Downloaded checkpoints
+checkpoints/
