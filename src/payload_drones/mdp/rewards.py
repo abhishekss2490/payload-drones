@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 
 from mjlab.envs import ManagerBasedRlEnv
@@ -9,10 +11,16 @@ from mjlab.envs.mdp.rewards import is_alive, is_terminated
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.utils.lab_api.math import quat_error_magnitude
 
-from payload_drones.vendor.mdp.rewards import _exp_kernel
-
 from payload_drones.mdp.observations import _payload, _ref_pos
 from payload_drones.mdp.team_scaling import N_AGENTS
+
+
+_GAUSSIAN_SCALE = math.sqrt(-2 * math.log(0.1))
+
+
+def _exp_kernel(error_sq: torch.Tensor, std: float) -> torch.Tensor:
+    """Gaussian kernel that is 1 at zero error and about 0.1 at ``std``."""
+    return torch.exp(-0.5 * (error_sq / (std**2)) * _GAUSSIAN_SCALE**2)
 
 
 def payload_position_tracking(env: ManagerBasedRlEnv, command_name: str = "payload_pose", std: float = 0.5) -> torch.Tensor:

@@ -14,7 +14,7 @@ wp.config.kernel_cache_dir = "/tmp/payload-drones-warp-cache"
 from mjlab.envs import ManagerBasedRlEnv
 from rsl_rl.storage import RolloutStorage
 
-from payload_drones.vendor.rl.modules import TrajectoryEncoder
+from payload_drones.rl.modules import TrajectoryEncoder
 from payload_drones.mdp.observations import HISTORY_LENGTH, POLICY_DIM
 from payload_drones.payload_env_cfg import make_payload_env_cfg
 from payload_drones.rl.algorithms import TeamLatentDistillation

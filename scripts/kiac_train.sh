@@ -9,7 +9,7 @@
 #     --agent.algorithm.learning-rate 1e-3
 #
 # Runs from the submitting checkout directly. payload-drones is self-contained
-# now that the mj-adapt-drones surface is vendored, so there is no external
+# now that payload-drones owns this surface, so there is no external
 # checkout to locate and no pyproject to rewrite. There is also no reason to
 # clone per run: mjlab keys its outputs by --agent.experiment-name, unique per
 # run, so concurrent jobs read the tree without writing to it. The earlier
@@ -52,7 +52,7 @@ uv run --no-sync python -c "import torch; print('torch      :', torch.__version_
 echo "----------------------------------------------------------"
 uv run --no-sync train Mjlab-PayloadTransport-RMA-Phase1 \
   --agent.max-iterations 1500 \
-  --agent.logger tensorboard \
+  --agent.logger wandb \
   --agent.experiment-name "$RUN_NAME" \
   "${EXTRA_ARGS[@]}"
 

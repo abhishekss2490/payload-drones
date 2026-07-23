@@ -1,7 +1,4 @@
-"""Vendored from mj-adapt-drones at commit 1d52e89 on 2026-07-23.
-
-This is a vendored copy for payload-drones independence; do not edit casually.
-"""
+"""Temporal and trajectory encoders used by payload-drone RMA models."""
 from __future__ import annotations
 
 import torch

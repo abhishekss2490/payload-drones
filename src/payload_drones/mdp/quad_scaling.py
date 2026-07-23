@@ -1,6 +1,7 @@
-"""Vendored from mj-adapt-drones at commit 1d52e89 on 2026-07-23.
+"""Quadrotor dynamics scaling and domain randomization for payload transport.
 
-This is a vendored copy for payload-drones independence; do not edit casually.
+The quadrotor dynamics and scaling model shares heritage with prior single-quad
+RMA work.
 """
 from __future__ import annotations
 
@@ -107,7 +108,7 @@ class ScaleCfg:
     """Polynomial fit coefficients and arm-length sampling configuration.
 
     All polynomial coefficients are highest-degree-first (same as np.polyval).
-    Ported from adapt_drones/cfgs/scale_cfg.py.
+    The coefficients model the vehicles used by this environment.
     """
 
     arm_length_range: tuple[float, float] = (0.05, 0.16)
@@ -433,7 +434,7 @@ if __name__ == "__main__":
     from mjlab.entity import Entity, EntityCfg
     from mjlab.sim.sim import Simulation, SimulationCfg
 
-    from payload_drones.vendor.quadrotor.quadrotor_constants import (
+    from payload_drones.assets.quadrotor_constants import (
         QUADROTOR_ARTICULATION,
         get_spec,
     )

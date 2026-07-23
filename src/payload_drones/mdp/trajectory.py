@@ -1,7 +1,4 @@
-"""Vendored from mj-adapt-drones at commit 1d52e89 on 2026-07-23.
-
-This is a vendored copy for payload-drones independence; do not edit casually.
-"""
+"""Differentiable trajectory generation for payload transport commands."""
 from __future__ import annotations
 
 import math
@@ -488,4 +485,3 @@ if __name__ == "__main__":
     #         title=f"Scaled Trajectory for Env {i}",
     #         n_frames=100,
     #     )
-

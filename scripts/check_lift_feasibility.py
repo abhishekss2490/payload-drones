@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import torch
 
-from payload_drones.vendor.mdp.quad_scaling import ScaleCfg, torch_polyval
+from payload_drones.mdp.quad_scaling import ScaleCfg, torch_polyval
 
 GRAVITY = 9.81
 N_AGENTS = 3

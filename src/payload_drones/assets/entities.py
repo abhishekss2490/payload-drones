@@ -7,7 +7,7 @@ from pathlib import Path
 import mujoco
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 
-from payload_drones.vendor.quadrotor.quadrotor_constants import QUADROTOR_ARTICULATION
+from payload_drones.assets.quadrotor_constants import QUADROTOR_ARTICULATION
 
 _ASSET_DIR = Path(__file__).parent
 
