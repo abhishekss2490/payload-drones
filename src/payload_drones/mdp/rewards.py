@@ -16,22 +16,47 @@ from payload_drones.mdp.team_scaling import N_AGENTS
 
 
 _GAUSSIAN_SCALE = math.sqrt(-2 * math.log(0.1))
+_LN10 = math.log(10.0)
 
 
 def _exp_kernel(error_sq: torch.Tensor, std: float) -> torch.Tensor:
-    """Gaussian kernel that is 1 at zero error and about 0.1 at ``std``."""
+    """Gaussian kernel: 1 at zero error, ~0.1 at ``std``. Light-tailed (exp of the
+    SQUARED error), so it goes flat quickly -- good for a sharp precision well near
+    zero, poor for capturing a large error."""
     return torch.exp(-0.5 * (error_sq / (std**2)) * _GAUSSIAN_SCALE**2)
 
 
-def payload_position_tracking(env: ManagerBasedRlEnv, command_name: str = "payload_pose", std: float = 0.5) -> torch.Tensor:
+def _norm_kernel(error: torch.Tensor, scale: float) -> torch.Tensor:
+    """Heavy-tailed kernel: 1 at zero error, ~0.1 at ``scale``, exp of the NORM.
+
+    This is the CoRL (Zeng et al. 2025) tracking-reward shape, ``exp(-lambda*||e||)``
+    with ``lambda = ln(10)/scale`` so the reward is 0.1 at ``error = scale`` (matching
+    the Gaussian's convention). Unlike the Gaussian it keeps real gradient at large
+    errors -- e.g. at scale=1.5 it is still 0.22 at 1 m and 0.07 at 1.8 m, where the
+    Gaussian is ~0. A slow cable-suspended payload drifts to 0.7-1.8 m from its
+    reference, exactly the range where the Gaussian went dead, so the coarse tracking
+    terms use this shape and a Gaussian fine term supplies precision near zero.
+    """
+    return torch.exp(-_LN10 * error / scale)
+
+
+def payload_position_tracking(env: ManagerBasedRlEnv, command_name: str = "payload_pose", scale: float = 1.5) -> torch.Tensor:
+    """Coarse position capture: heavy-tailed, gradient across the whole drift range."""
+    error = (_payload(env).data.root_link_pos_w - _ref_pos(env, command_name)).norm(dim=-1)
+    return _norm_kernel(error, scale)
+
+
+def payload_position_fine(env: ManagerBasedRlEnv, command_name: str = "payload_pose", std: float = 0.2) -> torch.Tensor:
+    """Fine position precision: sharp Gaussian well near zero."""
     error_sq = (_payload(env).data.root_link_pos_w - _ref_pos(env, command_name)).square().sum(-1)
     return _exp_kernel(error_sq, std)
 
 
-def payload_orientation_tracking(env: ManagerBasedRlEnv, command_name: str = "payload_pose", std: float = 0.3) -> torch.Tensor:
+def payload_orientation_tracking(env: ManagerBasedRlEnv, command_name: str = "payload_pose", scale: float = 1.5) -> torch.Tensor:
+    """Attitude tracking: heavy-tailed so weakly-actuated attitude has gradient at 1+ rad."""
     cmd = env.command_manager.get_term(command_name)
     error = quat_error_magnitude(cmd.quat_command, _payload(env).data.root_link_quat_w)
-    return _exp_kernel(error.square(), std)
+    return _norm_kernel(error, scale)
 
 
 def payload_velocity_tracking(env: ManagerBasedRlEnv, command_name: str = "payload_pose", std: float = 0.5) -> torch.Tensor:
@@ -85,25 +110,17 @@ def cable_slack_penalty(env: ManagerBasedRlEnv) -> torch.Tensor:
     return _masked_mean(env, torch.stack(values, -1))
 
 
-# Initial widths are the first stage of the live curriculum.  In particular,
-# the coarse position std is intentionally kept in the reward config so Tyro's
-# ``--env.rewards.payload-position-tracking.params.std`` flag can select the
-# early capture basin; the curriculum only overwrites it at later stages.
 reward_terms = {
-    # Coarse position std stays WIDE at 0.75 for capture during learning, then
-    # the curriculum bounds it down (0.60 -> 0.45) only after iteration 1000,
-    # once the policy can already fly. Keeping it wide early preserves gradient
-    # at the 0.7-1.8 m the aligned-spawn baseline actually drifted to; tightening
-    # it from the start would starve the very gradient that closes the offset.
-    # (broad-capture at 1.5 was falsified on the cluster: it drifted, not tracked.)
-    "payload_position_tracking": RewardTermCfg(func=payload_position_tracking, weight=0.30, params={"std": 0.75}),
-    "payload_position_fine": RewardTermCfg(func=payload_position_tracking, weight=0.20, params={"std": 0.20}),
-    # Orientation std widened 0.75 -> 1.0 so there is gradient where the payload
-    # actually sits: at 1.1 rad error std=0.75 gives ~0.007 (no signal) while
-    # std=1.0 gives ~0.06. The orientation curriculum that tightened this toward
-    # 0.30 is removed (see curriculum.py) -- tightening removed the little signal
-    # the weakly-actuated attitude axis had before it was ever being held.
-    "payload_orientation_tracking": RewardTermCfg(func=payload_orientation_tracking, weight=0.20, params={"std": 1.0}),
+    # Coarse position + orientation use the heavy-tailed CoRL kernel (exp of the
+    # norm), scale 1.5. It keeps gradient across the 0.7-1.8 m / ~1 rad range the
+    # payload actually drifts to, where the old Gaussian went dead -- this is the
+    # structural fix for loose tracking, replacing the std-tuning workarounds.
+    # No coarse curriculum: the kernel is not sparse, so it is held constant and
+    # precision comes from the Gaussian fine term below. (`scale` is also the CLI
+    # override point for a capture-width ablation.)
+    "payload_position_tracking": RewardTermCfg(func=payload_position_tracking, weight=0.30, params={"scale": 1.5}),
+    "payload_position_fine": RewardTermCfg(func=payload_position_fine, weight=0.20, params={"std": 0.20}),
+    "payload_orientation_tracking": RewardTermCfg(func=payload_orientation_tracking, weight=0.20, params={"scale": 1.5}),
     "payload_velocity_tracking": RewardTermCfg(func=payload_velocity_tracking, weight=0.15, params={"std": 1.0}),
     "payload_ang_vel_penalty": RewardTermCfg(func=payload_ang_vel_penalty, weight=0.15, params={"std": 2.0}),
     # At the worst bounded shaping values, a live step still has positive

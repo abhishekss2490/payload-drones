@@ -40,8 +40,16 @@ class PayloadTrajectoryCommandCfg(CommandTermCfg):
     # after the payload mass has been included in the denominator.
     num_twr_bins: int = 8
     team_twr_range: tuple[float, float] = (1.0, 4.0)
-    rho_min: float = 0.05
-    rho_max: float = 1.0
+    # Trajectory difficulty is pinned at rho = 0.25 rather than performance-gated.
+    # The gated curriculum never advanced past rho_min (the first baseline stayed
+    # at 0.05 the whole run, so it only ever practiced the slowest trajectories).
+    # rho sets the trajectory's peak *acceleration* as rho*(twr-1)*g; the 1.5 m/s
+    # speed cap (max_payload_speed) still bounds peak speed on top, so we accept
+    # whatever speed rho=0.25 yields under that cap. Setting min==max pins it:
+    # `rho = rho_min + rand*(ceiling - rho_min)` collapses to rho_min, and the
+    # promote/demote clamps to [0.25, 0.25].
+    rho_min: float = 0.25
+    rho_max: float = 0.25
     rho_step: float = 0.05
     promote_threshold: float = 0.20
     success_window: int = 15

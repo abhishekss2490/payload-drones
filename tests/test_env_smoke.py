@@ -281,13 +281,19 @@ def test_6_reward_sanity_includes_bounded_survival_economics():
     state[:, 0] += 3.0
     payload.write_root_state_to_sim(state)
     env.sim.forward()
-    far_pos = reward_terms["payload_position_tracking"].func(env, std=0.5)
+    far_pos = reward_terms["payload_position_tracking"].func(env, scale=1.5)
     far_fine = reward_terms["payload_position_fine"].func(env, std=0.1)
     far = sum(term.weight * term.func(env, **term.params) for term in reward_terms.values() if term.weight > 0)
     # Tracking terms sum to 1.0 and a non-terminated live state adds 0.1.
     assert torch.allclose(near, torch.full_like(near, 1.10), atol=1e-4)
-    assert (far_pos < 1e-12).all() and (far_fine < 1e-12).all()
-    assert torch.allclose(far, torch.full_like(far, 0.60), atol=1e-4)
+    # The coarse norm kernel keeps a small but NONZERO reward at 3 m (heavy tail:
+    # exp(-ln10 * 3 / 1.5) = 0.01) -- that is the whole point of the shape. The
+    # Gaussian fine term is dead there, as intended.
+    assert torch.allclose(far_pos, torch.full_like(far_pos, 0.01), atol=1e-3)
+    assert (far_fine < 1e-12).all()
+    # Non-position terms (orientation, velocity, ang-vel, alive) contribute 0.60;
+    # the coarse position tail adds 0.30 * 0.01 = 0.003 on top.
+    assert torch.allclose(far, torch.full_like(far, 0.603), atol=1e-3)
 
 
 def test_reward_economics_make_every_bounded_live_step_nonnegative():
@@ -343,26 +349,31 @@ def test_reward_curriculum_holds_wide_then_tightens_after_1000_iterations():
     env = _env(2)
     env.reset()
 
+    # Coarse position + orientation use the heavy-tailed norm kernel (scale, held
+    # constant, no curriculum). Only the Gaussian std terms are curriculum-driven.
     def snapshot() -> dict[str, float]:
         return {
             name: env.reward_manager.get_term_cfg(name).params["std"]
             for name in (
-                "payload_position_tracking",
                 "payload_position_fine",
-                "payload_orientation_tracking",
                 "payload_velocity_tracking",
                 "payload_ang_vel_penalty",
             )
         }
 
+    def coarse_scales() -> dict[str, float]:
+        return {
+            name: env.reward_manager.get_term_cfg(name).params["scale"]
+            for name in ("payload_position_tracking", "payload_orientation_tracking")
+        }
+
     initial = {
-        "payload_position_tracking": 0.75,
         "payload_position_fine": 0.20,
-        "payload_orientation_tracking": 1.0,   # held constant: no attitude curriculum
         "payload_velocity_tracking": 1.0,
         "payload_ang_vel_penalty": 2.0,
     }
     assert snapshot() == initial
+    assert coarse_scales() == {"payload_position_tracking": 1.5, "payload_orientation_tracking": 1.5}
 
     # Curriculum does NOT start until 1000 iterations: at 500 nothing has moved.
     env.common_step_counter = 500 * 256
@@ -371,16 +382,15 @@ def test_reward_curriculum_holds_wide_then_tightens_after_1000_iterations():
     assert env.reward_manager.get_term_cfg("action_rate").weight == 0.0
     assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == 0.0
 
-    # First tightening at 1000. Orientation stays wide at 1.0.
+    # First tightening at 1000; the coarse norm-kernel scales never move.
     env.common_step_counter = 1000 * 256
     env.curriculum_manager.compute()
     assert snapshot() == {
-        "payload_position_tracking": 0.60,
         "payload_position_fine": 0.15,
-        "payload_orientation_tracking": 1.0,
         "payload_velocity_tracking": 0.75,
         "payload_ang_vel_penalty": 1.50,
     }
+    assert coarse_scales() == {"payload_position_tracking": 1.5, "payload_orientation_tracking": 1.5}
     assert env.reward_manager.get_term_cfg("action_rate").weight == -0.001
     assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == -0.001
 
@@ -388,9 +398,7 @@ def test_reward_curriculum_holds_wide_then_tightens_after_1000_iterations():
     env.common_step_counter = 1500 * 256
     env.curriculum_manager.compute()
     assert snapshot() == {
-        "payload_position_tracking": 0.45,
         "payload_position_fine": 0.10,
-        "payload_orientation_tracking": 1.0,
         "payload_velocity_tracking": 0.50,
         "payload_ang_vel_penalty": 1.00,
     }
@@ -401,12 +409,16 @@ def test_reward_curriculum_holds_wide_then_tightens_after_1000_iterations():
 def test_sweep_parameters_are_direct_config_overrides():
     env_cfg = make_payload_env_cfg(num_envs=2)
     command_cfg = env_cfg.commands["payload_pose"]
-    assert env_cfg.rewards["payload_position_tracking"].params["std"] == 0.75
-    assert env_cfg.rewards["payload_orientation_tracking"].params["std"] == 1.0
-    # Attitude is held wide with no tightening curriculum (weak cable authority).
+    # Coarse position + orientation use the heavy-tailed norm kernel (scale=1.5),
+    # held constant -- neither has a tightening curriculum.
+    assert env_cfg.rewards["payload_position_tracking"].params["scale"] == 1.5
+    assert env_cfg.rewards["payload_orientation_tracking"].params["scale"] == 1.5
+    assert "payload_position_tracking_std" not in env_cfg.curriculum
     assert "payload_orientation_tracking_std" not in env_cfg.curriculum
     assert command_cfg.hover_fraction_initial == 0.40
     assert command_cfg.hover_fraction_final == 0.15
+    # Trajectory difficulty is pinned at rho = 0.25 (not performance-gated).
+    assert command_cfg.rho_min == 0.25 and command_cfg.rho_max == 0.25
 
     rl_cfg = payload_rma_phase1_cfg()
     assert rl_cfg.max_iterations == 2000

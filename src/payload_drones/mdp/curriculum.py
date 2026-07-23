@@ -38,17 +38,9 @@ def team_twr_bin(
 _ITER = 256
 
 curriculum_terms = {
-    "payload_position_tracking_std": CurriculumTermCfg(
-        func=reward_curriculum,
-        # No step-zero stage: the reward config's initial std (0.75) is held
-        # through the first 1000 iterations, so the policy learns to fly under a
-        # wide capture kernel before it is bounded down. It is also the direct
-        # CLI override point for the broad-capture ablation.
-        params={"reward_name": "payload_position_tracking", "stages": [
-            {"step": 1000 * _ITER, "params": {"std": 0.60}},
-            {"step": 1500 * _ITER, "params": {"std": 0.45}},
-        ]},
-    ),
+    # No coarse-position-std curriculum: the coarse term now uses the heavy-tailed
+    # norm kernel (constant scale=1.5), which is not sparse and needs no bounding.
+    # Precision comes from the Gaussian fine term, whose std the curriculum tightens.
     "payload_position_fine_std": CurriculumTermCfg(
         func=reward_curriculum,
         params={"reward_name": "payload_position_fine", "stages": [
