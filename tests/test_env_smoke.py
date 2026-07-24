@@ -287,10 +287,9 @@ def test_reset_spawns_complete_team_at_reference_with_identity_attitude():
     assert velocity_error.max() <= max_velocity_error + 1.0e-5
     assert torch.equal(command.quat_command, identity)
     assert torch.equal(payload.data.root_link_quat_w, identity)
-    # The probabilistic check is deliberately broad; it catches disabled or
-    # all-hover behavior without making one seeded draw brittle.
+    # No hover warm-up in the baseline: every episode is a moving trajectory.
     hover_fraction = command.is_hover_episode.float().mean()
-    assert 0.30 < hover_fraction < 0.50
+    assert hover_fraction == 0.0
     assert not payload_ground_contact(env).any()
     assert not any_quad_ground_contact(env).any()
     assert not quad_collision(env).any()
@@ -473,8 +472,10 @@ def test_sweep_parameters_are_direct_config_overrides():
     assert env_cfg.rewards["payload_orientation_tracking"].params["scale"] == 1.5
     assert "payload_position_tracking_std" not in env_cfg.curriculum
     assert "payload_orientation_tracking_std" not in env_cfg.curriculum
-    assert command_cfg.hover_fraction_initial == 0.40
-    assert command_cfg.hover_fraction_final == 0.15
+    # No hover warm-up in the baseline (stationary episodes are unlike the
+    # rho=0.25 fast-tracking target); every episode is a moving trajectory.
+    assert command_cfg.hover_fraction_initial == 0.0
+    assert command_cfg.hover_fraction_final == 0.0
     # Trajectory difficulty is pinned at rho = 0.25 (not performance-gated).
     assert command_cfg.rho_min == 0.25 and command_cfg.rho_max == 0.25
 

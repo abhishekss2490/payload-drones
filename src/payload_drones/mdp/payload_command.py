@@ -80,8 +80,12 @@ class PayloadTrajectoryCommandCfg(CommandTermCfg):
     # A cable-coupled team must learn stationary suspension before every
     # episode asks for translation.  This probability anneals linearly in PPO
     # iterations and is independently CLI-overridable for the no-warm-up run.
-    hover_fraction_initial: float = 0.40
-    hover_fraction_final: float = 0.15
+    # No hover warm-up by default. The stationary-hover mixture was designed for
+    # the slow-trajectory (rho=0.05) regime "learn to hover before tracking"; with
+    # rho pinned at 0.25 the target is fast tracking, so stationary episodes are
+    # unlike the real task and add machinery for little gain. Set >0 to re-enable.
+    hover_fraction_initial: float = 0.0
+    hover_fraction_final: float = 0.0
     hover_anneal_iterations: int = 500
     steps_per_iteration: int = 256
 
