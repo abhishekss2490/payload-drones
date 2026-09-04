@@ -8,19 +8,14 @@
 #   sbatch --job-name=pd_baseline scripts/kiac_train.sh baseline \
 #     --agent.algorithm.learning-rate 1e-3
 #
-# Runs from the submitting checkout directly. payload-drones is self-contained
-# now that payload-drones owns this surface, so there is no external
-# checkout to locate and no pyproject to rewrite. There is also no reason to
-# clone per run: mjlab keys its outputs by --agent.experiment-name, unique per
-# run, so concurrent jobs read the tree without writing to it. The earlier
-# per-run clone plus `uv sync` cost four identical ~8 GB syncs for no benefit.
+# Runs from the submitting checkout through robot-learning's shared environment.
 #
 # The commit is recorded in the log rather than passed in. Sweeps get reviewed
 # hours later, and a curve with no provenance is not evidence.
 
 #SBATCH --partition=ada
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=cn9        # old NVIDIA driver (CUDA 12.2): mujoco_warp loses CUDA graphs
+#SBATCH --exclude=cn8,cn9
 #SBATCH --time=12:00:00
 #SBATCH --mem=64G
 #SBATCH --cpus-per-task=8
@@ -33,8 +28,9 @@ RUN_NAME="${1:?usage: kiac_train.sh <RUN_NAME> [extra args...]}"
 shift
 EXTRA_ARGS=("$@")
 
-cd "${SLURM_SUBMIT_DIR:-$PWD}"
-source ~/.local/bin/env
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+PYTHON="$(dirname "$REPO")/.venv/bin/python"
+cd "$REPO"
 export PYTHONUNBUFFERED=1
 export GIT_PYTHON_REFRESH=quiet
 
@@ -47,10 +43,10 @@ echo "gpu        : $(nvidia-smi --query-gpu=name,memory.total --format=csv,nohea
 echo "started    : $(date -Is)"
 echo "=========================================================="
 
-uv run --no-sync python -c "import torch; print('torch      :', torch.__version__, '| cuda', torch.cuda.is_available())"
+"$PYTHON" -c "import torch; print('torch      :', torch.__version__, '| cuda', torch.cuda.is_available())"
 
 echo "----------------------------------------------------------"
-uv run --no-sync train Mjlab-PayloadTransport-RMA-Phase1 \
+"$PYTHON" -m payload_drones.train Mjlab-PayloadTransport-RMA-Phase1 \
   --agent.max-iterations 2000 \
   --agent.logger wandb \
   --agent.experiment-name "$RUN_NAME" \

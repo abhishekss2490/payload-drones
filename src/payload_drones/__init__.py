@@ -14,3 +14,5 @@ which belong to the MARL model/training stage. Registration therefore lands in
 ``payload_drones/config/__init__.py`` once those exist. Until then the env is
 constructed directly from ``payload_drones.payload_env_cfg.make_payload_env_cfg``.
 """
+
+import mjlab as mjlab

@@ -1,6 +1,8 @@
-.venv/
+.venv*/
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.ruff_cache/
 
 # Local agent and diagnostic state
 .agents/
@@ -9,8 +11,9 @@ __pycache__/
 .codex/
 .diag.txt
 
-# Training run outputs
+# Run outputs and downloaded checkpoints
 logs/
-
-# Downloaded checkpoints
+wandb/
+outputs/
 checkpoints/
+*.egg-info/

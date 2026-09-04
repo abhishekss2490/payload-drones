@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import mujoco_warp as mjwarp
 import torch
+import warp as wp
 
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers.event_manager import RecomputeLevel, requires_model_fields
@@ -295,10 +297,11 @@ def settle_quads_for_cable_slack(
     if not hasattr(env, "team_state"):
         raise RuntimeError("team_state must exist before settling cable geometry")
 
-    # Root-reset events have written qpos/qvel but not necessarily refreshed
-    # derived site poses. Refresh once, then use the actual hook/attach geometry
-    # rather than hard-coding spawn heights or attachment offsets.
-    env.sim.forward()
+    # Root-reset events have written qpos/qvel but not refreshed derived site
+    # poses. Only kinematics is needed here; a full forward also runs collision
+    # detection while the team is still in its pre-settle geometry.
+    with wp.ScopedDevice(env.sim.wp_device):
+        mjwarp.kinematics(env.sim.wp_model, env.sim.wp_data)
     payload = env.scene["payload"]
     target_lengths = slack_ratio * env.team_state.cable_length[ids]
     if linear_velocity is None:

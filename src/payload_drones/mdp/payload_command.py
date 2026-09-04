@@ -381,8 +381,9 @@ class PayloadTrajectoryCommand(CommandTerm):
         self.cumulative_sq_error += pos_error.square()
         self.step_count += 1
 
-    def _update_command(self) -> None:
-        self.episode_step += round(self._env.step_dt / self.physics_dt)
+    def _update_command(self, env_ids: torch.Tensor | None) -> None:
+        ids = slice(None) if env_ids is None else env_ids
+        self.episode_step[ids] += round(self._env.step_dt / self.physics_dt)
 
 
 # Compatibility name for existing downstream imports; the default is now moving.

@@ -238,6 +238,9 @@ def main() -> None:
     """Inject the cooperative stats wrapper into mjlab's normal play script."""
     from mjlab.scripts import play as _play
 
+    from payload_drones.provenance import require_clean_git
+
+    require_clean_git()
     _play.RslRlVecEnvWrapper = TeamStatsVecEnvWrapper
     _play.main()
 
