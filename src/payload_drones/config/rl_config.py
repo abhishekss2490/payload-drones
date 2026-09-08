@@ -3,12 +3,11 @@
 from mjlab.rl import RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
 from payload_drones.rl.configs import (
+    DynamicsDistillationAlgorithmCfg,
     MARLDistillationRunnerCfg,
     MARLStudentModelCfg,
     MARLTeacherModelCfg,
-    TeamLatentDistillationAlgorithmCfg,
 )
-
 
 # Rollout length is memory-bound, not just a learning hyperparameter:
 # RolloutStorage allocates every observation group for
@@ -44,16 +43,30 @@ def payload_rma_phase1_cfg() -> RslRlOnPolicyRunnerCfg:
     actor = MARLTeacherModelCfg(obs_normalization=False, distribution_cfg=_SHARED_STD.copy())
     critic = MARLTeacherModelCfg(obs_normalization=False)
     return RslRlOnPolicyRunnerCfg(
-        seed=4551, num_steps_per_env=NUM_STEPS_PER_ENV, max_iterations=2000, save_interval=100,
-        experiment_name="payload_rma_phase1", logger="wandb", wandb_project="payload-drones",
-        clip_actions=1.0, actor=actor, critic=critic,
+        seed=4551,
+        num_steps_per_env=NUM_STEPS_PER_ENV,
+        max_iterations=2000,
+        save_interval=100,
+        experiment_name="payload_rma_phase1",
+        logger="wandb",
+        wandb_project="payload-drones",
+        clip_actions=1.0,
+        actor=actor,
+        critic=critic,
         algorithm=RslRlPpoAlgorithmCfg(
             # The policy distribution is joint over three agents, and its KL
             # is the sum of their per-agent KLs.  Use a conservative update and
             # make the configured KL target active; Tyro exposes every field as
             # ``--agent.algorithm.*`` for the aggressive-PPO ablation.
-            num_learning_epochs=5, num_mini_batches=16, learning_rate=1e-3, schedule="adaptive",
-            gamma=0.995, lam=0.95, entropy_coef=0.0, desired_kl=0.015, max_grad_norm=1.0,
+            num_learning_epochs=5,
+            num_mini_batches=16,
+            learning_rate=1e-3,
+            schedule="adaptive",
+            gamma=0.995,
+            lam=0.95,
+            entropy_coef=0.0,
+            desired_kl=0.015,
+            max_grad_norm=1.0,
             clip_param=0.2,
         ),
         obs_groups={
@@ -67,11 +80,22 @@ def payload_rma_phase2_cfg() -> MARLDistillationRunnerCfg:
     student = MARLStudentModelCfg(obs_normalization=False, distribution_cfg=_SHARED_STD.copy())
     teacher = MARLTeacherModelCfg(obs_normalization=False, distribution_cfg=_SHARED_STD.copy())
     return MARLDistillationRunnerCfg(
-        seed=4551, num_steps_per_env=NUM_STEPS_PER_ENV_PHASE2, max_iterations=500, save_interval=50,
-        experiment_name="payload_rma_phase2", logger="wandb", wandb_project="payload-drones",
-        clip_actions=1.0, resume=True, student=student, teacher=teacher,
-        algorithm=TeamLatentDistillationAlgorithmCfg(
-            loss_type="mse", learning_rate=1e-3, num_learning_epochs=1, gradient_length=15,
+        seed=4551,
+        num_steps_per_env=NUM_STEPS_PER_ENV_PHASE2,
+        max_iterations=500,
+        save_interval=50,
+        experiment_name="payload_rma_phase2",
+        logger="wandb",
+        wandb_project="payload-drones",
+        clip_actions=1.0,
+        resume=True,
+        student=student,
+        teacher=teacher,
+        algorithm=DynamicsDistillationAlgorithmCfg(
+            loss_type="mse",
+            learning_rate=1e-3,
+            num_learning_epochs=1,
+            gradient_length=15,
             max_grad_norm=1.0,
         ),
         obs_groups={

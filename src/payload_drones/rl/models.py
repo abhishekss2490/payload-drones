@@ -2,62 +2,19 @@
 
 from __future__ import annotations
 
-import math
-
 import torch
-from torch import nn
-from tensordict import TensorDict
-
 from rsl_rl.models import MLPModel
-from rsl_rl.modules import EmpiricalNormalization, MLP, HiddenState
-from rsl_rl.modules import GaussianDistribution
-from rsl_rl.utils import unpad_trajectories
+from rsl_rl.modules import MLP, EmpiricalNormalization, GaussianDistribution, HiddenState
+from tensordict import TensorDict
+from torch import nn
 
 from payload_drones.rl.modules import CausalTCN, TrajectoryEncoder
-
 
 N_AGENTS = 3
 POLICY_DIM = 38
 DYNAMICS_DIM = 15
 HISTORY_LENGTH = 50
 ACTION_DIM_PER_AGENT = 4
-
-
-def _rebuild_mlp_with_output_activation(
-    model: MLPModel,
-    latent_dim: int,
-    hidden_dims: tuple[int, ...] | list[int],
-    activation: str,
-    output_activation: str,
-) -> None:
-    """Replace a model MLP with one that has a final output activation."""
-    if model.distribution is None:
-        return
-    model.mlp = MLP(
-        latent_dim, model.distribution.input_dim, hidden_dims, activation,
-        last_activation=output_activation,
-    )
-    model.distribution.init_mlp_weights(model.mlp)
-
-
-def _squashed_forward(
-    model: MLPModel,
-    obs: TensorDict,
-    masks: torch.Tensor | None,
-    hidden_state: HiddenState,
-    stochastic_output: bool,
-) -> torch.Tensor:
-    """Run an MLP model with a tanh-squashed actor mean."""
-    obs = unpad_trajectories(obs, masks) if masks is not None and not model.is_recurrent else obs
-    latent = model.get_latent(obs, masks, hidden_state)
-    mlp_output = model.mlp(latent)
-    if model.distribution is not None:
-        mlp_output = torch.tanh(mlp_output)
-        if stochastic_output:
-            model.distribution.update(mlp_output)
-            return model.distribution.sample()
-        return model.distribution.deterministic_output(mlp_output)
-    return mlp_output
 
 
 def fold_agents(x: torch.Tensor, per_agent_dim: int) -> torch.Tensor:
@@ -120,7 +77,9 @@ class _MARLModelBase(MLPModel):
         if obs["policy"].shape[-1] != N_AGENTS * POLICY_DIM:
             raise ValueError("policy observation does not contain three 38-dim ego blocks")
         if obs["payload_trajectory"].shape[-1] != 1200:
-            raise ValueError("payload trajectory must be one shared 1200-dim tensor per environment")
+            raise ValueError(
+                "payload trajectory must be one shared 1200-dim tensor per environment"
+            )
 
     def _get_latent_dim(self) -> int:
         if self.is_centralized_critic:
@@ -142,8 +101,8 @@ class _MARLModelBase(MLPModel):
         from the first step, every episode, regardless of what it observes.
 
         Hover needs ``u = sqrt(1/margin)``, i.e. ``a = 2*sqrt(1/margin) - 1``.
-        At the median loaded TWR of 2.04 that is ``a ~ 0.40``. `_squashed_forward`
-        applies tanh to the MLP output, so the pre-tanh bias is ``atanh(0.40)``.
+        At the median loaded TWR of 2.04 that is ``a ~ 0.40``, and the Gaussian
+        mean is the MLP output unchanged, so that is the bias.
 
         This is a constant, identical for every environment, so it leaks no
         privileged per-env information -- it just starts the policy near the
@@ -153,7 +112,7 @@ class _MARLModelBase(MLPModel):
             return
         last = [m for m in self.mlp.modules() if isinstance(m, nn.Linear)][-1]
         with torch.no_grad():
-            last.bias.fill_(math.atanh(hover_action))
+            last.bias.fill_(hover_action)
 
     def _critic_latent(self, obs: TensorDict) -> torch.Tensor:
         return self.obs_normalizer(obs["critic"])
@@ -165,11 +124,11 @@ class _MARLModelBase(MLPModel):
         hidden_state: HiddenState = None,
         stochastic_output: bool = False,
     ) -> torch.Tensor:
+        actions = MLPModel.forward(self, obs, masks, hidden_state, stochastic_output)
         if self.is_centralized_critic:
-            return MLPModel.forward(self, obs, masks, hidden_state, stochastic_output)
+            return actions
         # The shared MLP/distribution operate on one folded agent row and emit
         # four motors.  Restore the ordinary mjlab action boundary afterwards.
-        actions = _squashed_forward(self, obs, masks, hidden_state, stochastic_output)
         return unfold_agents(actions, ACTION_DIM_PER_AGENT)
 
     @property
@@ -206,7 +165,9 @@ class _MARLModelBase(MLPModel):
         return log_prob.view(-1, N_AGENTS).sum(dim=-1)
 
     def get_kl_divergence(
-        self, old_params: tuple[torch.Tensor, ...], new_params: tuple[torch.Tensor, ...],
+        self,
+        old_params: tuple[torch.Tensor, ...],
+        new_params: tuple[torch.Tensor, ...],
     ) -> torch.Tensor:
         if self.is_centralized_critic:
             return super().get_kl_divergence(old_params, new_params)
@@ -231,38 +192,47 @@ class MARLTeacherModel(_MARLModelBase):
         traj_conv_channels: tuple[int, ...] = (16, 8),
         traj_kernel_sizes: tuple[int, ...] = (5, 3),
         traj_strides: tuple[int, ...] = (2, 2),
-        output_activation: str | None = None,
         hidden_dims: tuple[int, ...] | list[int] = (32, 32),
         activation: str = "elu",
         obs_normalization: bool = False,
         distribution_cfg: dict | None = None,
         **kwargs,
     ) -> None:
-        if output_activation is not None:
-            raise ValueError("payload actions use tanh in _squashed_forward; output_activation must be None")
         self.traj_latent_dim = traj_latent_dim
         self.dyn_latent_dim = dyn_latent_dim
         self._init_layout(obs, obs_groups, obs_set)
         super().__init__(
-            obs, obs_groups, obs_set,
+            obs,
+            obs_groups,
+            obs_set,
             1 if self.is_centralized_critic else ACTION_DIM_PER_AGENT,
-            hidden_dims=hidden_dims, activation=activation,
-            obs_normalization=obs_normalization, distribution_cfg=distribution_cfg,
+            hidden_dims=hidden_dims,
+            activation=activation,
+            obs_normalization=obs_normalization,
+            distribution_cfg=distribution_cfg,
         )
         if self.is_centralized_critic:
             return
         self.trajectory_encoder = TrajectoryEncoder(
-            input_dim=obs["payload_trajectory"].shape[-1], output_dim=traj_latent_dim,
-            conv_channels=traj_conv_channels, kernel_sizes=traj_kernel_sizes,
-            strides=traj_strides, activation=activation,
+            input_dim=obs["payload_trajectory"].shape[-1],
+            output_dim=traj_latent_dim,
+            conv_channels=traj_conv_channels,
+            kernel_sizes=traj_kernel_sizes,
+            strides=traj_strides,
+            activation=activation,
         )
-        self.dynamics_encoder = MLP(DYNAMICS_DIM, dyn_latent_dim, dyn_encoder_dims, activation=activation)
+        self.dynamics_encoder = MLP(
+            DYNAMICS_DIM, dyn_latent_dim, dyn_encoder_dims, activation=activation
+        )
         if obs_normalization:
             self.obs_normalizer = EmpiricalNormalization(self._get_latent_dim())
         self._init_hover_bias()
 
     def get_latent(
-        self, obs: TensorDict, masks: torch.Tensor | None = None, hidden_state: HiddenState = None,
+        self,
+        obs: TensorDict,
+        masks: torch.Tensor | None = None,
+        hidden_state: HiddenState = None,
     ) -> torch.Tensor:
         if self.is_centralized_critic:
             return self._critic_latent(obs)
@@ -275,10 +245,15 @@ class MARLTeacherModel(_MARLModelBase):
         z_dyn = self.dynamics_encoder(dynamics)
         return torch.cat((policy, z_traj, z_dyn), dim=-1)
 
-    def get_dynamics_latent(self, obs: TensorDict) -> torch.Tensor:
+    def _agent_dynamics_latent(self, obs: TensorDict) -> torch.Tensor:
+        """Folded ``(B * N, D)`` latent, as the shared MLP head consumes it."""
         if self.is_centralized_critic:
             raise RuntimeError("centralized critic has no dynamics latent")
         return self.dynamics_encoder(fold_agents(obs["agent_dynamics"], DYNAMICS_DIM))
+
+    def dynamics_latent(self, obs: TensorDict) -> torch.Tensor:
+        """Env-major ``(B, N, D)`` distillation target."""
+        return self._agent_dynamics_latent(obs).view(-1, N_AGENTS, self.dyn_latent_dim)
 
     def update_normalization(self, obs: TensorDict) -> None:
         if not self.obs_normalization:
@@ -304,25 +279,26 @@ class MARLStudentModel(_MARLModelBase):
         traj_conv_channels: tuple[int, ...] = (16, 8),
         traj_kernel_sizes: tuple[int, ...] = (5, 3),
         traj_strides: tuple[int, ...] = (2, 2),
-        output_activation: str | None = None,
         hidden_dims: tuple[int, ...] | list[int] = (32, 32),
         activation: str = "elu",
         obs_normalization: bool = False,
         distribution_cfg: dict | None = None,
         **kwargs,
     ) -> None:
-        if output_activation is not None:
-            raise ValueError("payload actions use tanh in _squashed_forward; output_activation must be None")
         self.traj_latent_dim = traj_latent_dim
         self.dyn_latent_dim = dyn_latent_dim
         self.history_length = history_length
         self.sa_dim = POLICY_DIM + ACTION_DIM_PER_AGENT
         self._init_layout(obs, obs_groups, obs_set)
         super().__init__(
-            obs, obs_groups, obs_set,
+            obs,
+            obs_groups,
+            obs_set,
             1 if self.is_centralized_critic else ACTION_DIM_PER_AGENT,
-            hidden_dims=hidden_dims, activation=activation,
-            obs_normalization=obs_normalization, distribution_cfg=distribution_cfg,
+            hidden_dims=hidden_dims,
+            activation=activation,
+            obs_normalization=obs_normalization,
+            distribution_cfg=distribution_cfg,
         )
         if self.is_centralized_critic:
             return
@@ -330,13 +306,19 @@ class MARLStudentModel(_MARLModelBase):
         if obs["agent_history"].shape[-1] != expected_history_dim:
             raise ValueError(f"agent_history must have {expected_history_dim} values")
         self.trajectory_encoder = TrajectoryEncoder(
-            input_dim=obs["payload_trajectory"].shape[-1], output_dim=traj_latent_dim,
-            conv_channels=traj_conv_channels, kernel_sizes=traj_kernel_sizes,
-            strides=traj_strides, activation=activation,
+            input_dim=obs["payload_trajectory"].shape[-1],
+            output_dim=traj_latent_dim,
+            conv_channels=traj_conv_channels,
+            kernel_sizes=traj_kernel_sizes,
+            strides=traj_strides,
+            activation=activation,
         )
         self.adaptation_module = CausalTCN(
-            input_channels=self.sa_dim, hidden_channels=tcn_channels, kernel_size=tcn_kernel_size,
-            output_dim=dyn_latent_dim, activation=activation,
+            input_channels=self.sa_dim,
+            hidden_channels=tcn_channels,
+            kernel_size=tcn_kernel_size,
+            output_dim=dyn_latent_dim,
+            activation=activation,
         )
         if obs_normalization:
             self.obs_normalizer = EmpiricalNormalization(self._get_latent_dim())
@@ -347,13 +329,33 @@ class MARLStudentModel(_MARLModelBase):
             -1, self.history_length, self.sa_dim
         )
 
-    def get_adaptation_latent(self, obs: TensorDict) -> torch.Tensor:
+    def _agent_estimated_latent(self, obs: TensorDict) -> torch.Tensor:
+        """Folded ``(B * N, D)`` estimate, as the shared MLP head consumes it."""
         if self.is_centralized_critic:
             raise RuntimeError("centralized critic has no adaptation module")
         return self.adaptation_module(self._fold_history(obs["agent_history"]))
 
+    def estimated_dynamics_latent(self, obs: TensorDict) -> torch.Tensor:
+        """Env-major ``(B, N, D)`` prediction, paired with the teacher's target."""
+        return self._agent_estimated_latent(obs).view(-1, N_AGENTS, self.dyn_latent_dim)
+
+    def initialize_from_teacher(self, teacher: MARLTeacherModel) -> None:
+        """Copy the phase-1 inference path; the adaptation module starts cold."""
+        state = self.state_dict()
+        for key, value in teacher.state_dict().items():
+            if key in state and not key.startswith(("dynamics_encoder.", "adaptation_module.")):
+                state[key] = value
+        self.load_state_dict(state, strict=False)
+
+    def dynamics_estimator(self) -> nn.Module:
+        """The only student module trained during phase 2."""
+        return self.adaptation_module
+
     def get_latent(
-        self, obs: TensorDict, masks: torch.Tensor | None = None, hidden_state: HiddenState = None,
+        self,
+        obs: TensorDict,
+        masks: torch.Tensor | None = None,
+        hidden_state: HiddenState = None,
     ) -> torch.Tensor:
         if self.is_centralized_critic:
             return self._critic_latent(obs)
@@ -362,7 +364,7 @@ class MARLStudentModel(_MARLModelBase):
     def _raw_actor_latent(self, obs: TensorDict) -> torch.Tensor:
         policy = fold_agents(obs["policy"], POLICY_DIM)
         z_traj = self._shared_trajectory_latent(obs["payload_trajectory"])
-        z_dyn_hat = self.get_adaptation_latent(obs)
+        z_dyn_hat = self._agent_estimated_latent(obs)
         return torch.cat((policy, z_traj, z_dyn_hat), dim=-1)
 
     def update_normalization(self, obs: TensorDict) -> None:

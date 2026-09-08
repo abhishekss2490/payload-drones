@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [{ name = "Varad Vaidya", email = "vaidyavarad2001@gmail.com" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "robotics-common[mjlab,rsl]",
     "numpy>=2.3",
     "torch>=2.7",
 ]
@@ -16,3 +17,14 @@ payload_drones = "payload_drones.config"
 [build-system]
 requires = ["uv_build>=0.8.15,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Package __init__ files exist to re-export. That is not an unused import.
+"**/__init__.py" = ["F401"]

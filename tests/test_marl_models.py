@@ -12,12 +12,11 @@ from tensordict import TensorDict
 wp.config.kernel_cache_dir = "/tmp/payload-drones-warp-cache"
 
 from mjlab.envs import ManagerBasedRlEnv
+from robotics_common.learning import DynamicsDistillation
 from rsl_rl.storage import RolloutStorage
 
-from payload_drones.rl.modules import TrajectoryEncoder
 from payload_drones.mdp.observations import HISTORY_LENGTH, POLICY_DIM
 from payload_drones.payload_env_cfg import make_payload_env_cfg
-from payload_drones.rl.algorithms import TeamLatentDistillation
 from payload_drones.rl.models import (
     ACTION_DIM_PER_AGENT,
     DYNAMICS_DIM,
@@ -108,13 +107,13 @@ def test_4_ego_history_and_dynamics_are_isolated(env_obs: TensorDict):
     teacher = _teacher(env_obs)
     student = _student(env_obs)
     baseline_action = student(env_obs)
-    baseline_latent = student.get_adaptation_latent(env_obs)
+    baseline_latent = student.estimated_dynamics_latent(env_obs)
 
     changed_history = _clone_obs(env_obs)
     per_agent_history = HISTORY_LENGTH * (POLICY_DIM + ACTION_DIM_PER_AGENT)
     changed_history["agent_history"][:, per_agent_history : 2 * per_agent_history] += 2.0
     changed_action = student(changed_history)
-    changed_latent = student.get_adaptation_latent(changed_history)
+    changed_latent = student.estimated_dynamics_latent(changed_history)
     assert torch.equal(baseline_action.view(-1, 3, 4)[:, 0], changed_action.view(-1, 3, 4)[:, 0])
     assert torch.equal(baseline_action.view(-1, 3, 4)[:, 2], changed_action.view(-1, 3, 4)[:, 2])
     assert torch.equal(baseline_latent.view(-1, 3, 8)[:, 0], changed_latent.view(-1, 3, 8)[:, 0])
@@ -124,7 +123,7 @@ def test_4_ego_history_and_dynamics_are_isolated(env_obs: TensorDict):
     changed_dynamics["agent_dynamics"][:, DYNAMICS_DIM : 2 * DYNAMICS_DIM] += 2.0
     # Student is entirely blind to privileged dynamics; its adaptation remains unchanged.
     assert torch.equal(baseline_action, student(changed_dynamics))
-    assert torch.equal(baseline_latent, student.get_adaptation_latent(changed_dynamics))
+    assert torch.equal(baseline_latent, student.estimated_dynamics_latent(changed_dynamics))
     teacher_before = teacher(env_obs).view(-1, 3, 4)
     teacher_after = teacher(changed_dynamics).view(-1, 3, 4)
     assert torch.equal(teacher_before[:, 0], teacher_after[:, 0])
@@ -141,14 +140,18 @@ def test_5_actor_has_no_centralized_privileged_leak(env_obs: TensorDict):
     assert torch.equal(baseline, teacher(changed))
 
 
-def test_6_distillation_uses_ego_paired_rows(env_obs: TensorDict):
-    # Distinct known ego rows make a mistaken (N, B, D) target transpose fail
-    # deterministically, independent of random neural-network initialization.
-    predicted = torch.arange(4 * N_AGENTS * 8, dtype=torch.float32).view(-1, 8)
-    target = predicted.clone()
-    assert TeamLatentDistillation.ego_paired_loss(predicted, target) == 0
-    permuted = target.view(-1, N_AGENTS, 8)[:, [1, 0, 2]].reshape(-1, 8)
-    assert TeamLatentDistillation.ego_paired_loss(predicted, permuted) > 0
+def test_6_distillation_targets_are_env_major_ego_rows(env_obs: TensorDict):
+    # A mistaken (N, B, D) transpose must fail deterministically, independent of
+    # random initialization: env-major agent order is the pairing contract.
+    student = _student(env_obs)
+    teacher = _teacher(env_obs)
+    prediction = student.estimated_dynamics_latent(env_obs)
+    target = teacher.dynamics_latent(env_obs)
+
+    assert prediction.shape == (next(iter(env_obs.values())).shape[0], N_AGENTS, 8)
+    assert target.shape == prediction.shape
+    assert torch.equal(prediction.reshape(-1, 8), student._agent_estimated_latent(env_obs))
+    assert torch.equal(target.reshape(-1, 8), teacher._agent_dynamics_latent(env_obs))
 
 
 def test_7_exploration_std_is_tied_after_optimizer_step(env_obs: TensorDict):
@@ -173,14 +176,14 @@ def test_8_phase2_load_freezes_everything_except_tcn(env_obs: TensorDict):
     teacher = _teacher(env_obs)
     student = _student(env_obs)
     storage = RolloutStorage("distillation", 4, 1, env_obs, [12], "cpu")
-    algorithm = TeamLatentDistillation(student, teacher, storage, learning_rate=1e-3)
+    algorithm = DynamicsDistillation(student, teacher, storage, learning_rate=1e-3)
     algorithm.load({"actor_state_dict": teacher.state_dict()}, load_cfg=None, strict=True)
     assert all(not p.requires_grad for p in student.trajectory_encoder.parameters())
     assert all(not p.requires_grad for p in student.mlp.parameters())
     assert all(p.requires_grad for p in student.adaptation_module.parameters())
 
     before = {name: p.detach().clone() for name, p in student.named_parameters()}
-    loss = student.get_adaptation_latent(env_obs).square().mean()
+    loss = student.estimated_dynamics_latent(env_obs).square().mean()
     algorithm.optimizer.zero_grad()
     loss.backward()
     algorithm.optimizer.step()
@@ -189,17 +192,23 @@ def test_8_phase2_load_freezes_everything_except_tcn(env_obs: TensorDict):
         assert changed == name.startswith("adaptation_module.")
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable in this execution environment")
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="CUDA is unavailable in this execution environment"
+)
 def test_9_gpu_8192_forward_and_backward_without_oom():
     device = torch.device("cuda")
     batch = 8192
-    obs = TensorDict({
-        "policy": torch.randn(batch, 114, device=device),
-        "payload_trajectory": torch.randn(batch, 1200, device=device),
-        "agent_dynamics": torch.randn(batch, 45, device=device),
-        "agent_history": torch.randn(batch, 6300, device=device),
-        "critic": torch.randn(batch, 170, device=device),
-    }, batch_size=[batch], device=device)
+    obs = TensorDict(
+        {
+            "policy": torch.randn(batch, 114, device=device),
+            "payload_trajectory": torch.randn(batch, 1200, device=device),
+            "agent_dynamics": torch.randn(batch, 45, device=device),
+            "agent_history": torch.randn(batch, 6300, device=device),
+            "critic": torch.randn(batch, 170, device=device),
+        },
+        batch_size=[batch],
+        device=device,
+    )
     teacher, student = _teacher(obs).to(device), _student(obs).to(device)
     torch.cuda.reset_peak_memory_stats(device)
     (teacher(obs).square().mean() + student(obs).square().mean()).backward()
