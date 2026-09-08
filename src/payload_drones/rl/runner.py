@@ -1,21 +1,21 @@
 """Training runners and checkpoint persistence for payload-drone RMA."""
+
 from __future__ import annotations
 
 import os
 
 import torch
-from rsl_rl.env import VecEnv
-from rsl_rl.runners import DistillationRunner
-
 from mjlab.rl import MjlabOnPolicyRunner
 from mjlab.rl.vecenv_wrapper import RslRlVecEnvWrapper
+from rsl_rl.env import VecEnv
+from rsl_rl.runners import DistillationRunner
 
 
 def _save_trajectory_curriculum(unwrapped_env) -> dict | None:
     """Serialize the trajectory command term's curriculum state, if present."""
     try:
         term = unwrapped_env.command_manager.get_term("trajectory")
-    except Exception:
+    except KeyError:
         return None
     state_fn = getattr(term, "state_dict", None)
     return state_fn() if callable(state_fn) else None
@@ -27,7 +27,7 @@ def _load_trajectory_curriculum(unwrapped_env, state: dict | None) -> None:
         return
     try:
         term = unwrapped_env.command_manager.get_term("trajectory")
-    except Exception:
+    except KeyError:
         return
     load_fn = getattr(term, "load_state_dict", None)
     if callable(load_fn):
@@ -63,6 +63,7 @@ class MARLPhase1Runner(MjlabOnPolicyRunner):
         map_location: str | None = None,
     ) -> dict:
         infos = super().load(path, load_cfg, strict, map_location)
+        self.current_learning_iteration += 1
         if infos and "env_state" in infos:
             _load_trajectory_curriculum(
                 self.env.unwrapped, infos["env_state"].get("trajectory_curriculum")
@@ -98,7 +99,10 @@ class MARLDistillationRunner(DistillationRunner):
         super().__init__(env, train_cfg, log_dir, device)
 
     def export_policy_to_onnx(
-        self, path: str, filename: str = "policy.onnx", verbose: bool = False,
+        self,
+        path: str,
+        filename: str = "policy.onnx",
+        verbose: bool = False,
     ) -> None:
         onnx_model = self.alg.get_policy().as_onnx(verbose=verbose)
         onnx_model.to("cpu")
@@ -148,13 +152,11 @@ class MARLDistillationRunner(DistillationRunner):
 
         load_iteration = self.alg.load(loaded_dict, load_cfg, strict)
         if load_iteration:
-            self.current_learning_iteration = loaded_dict["iter"]
+            self.current_learning_iteration = loaded_dict["iter"] + 1
 
         infos = loaded_dict.get("infos", {})
         if infos and "env_state" in infos:
-            self.env.unwrapped.common_step_counter = infos["env_state"][
-                "common_step_counter"
-            ]
+            self.env.unwrapped.common_step_counter = infos["env_state"]["common_step_counter"]
             _load_trajectory_curriculum(
                 self.env.unwrapped, infos["env_state"].get("trajectory_curriculum")
             )

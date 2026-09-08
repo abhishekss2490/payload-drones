@@ -6,7 +6,7 @@
 #
 # Example:
 #   sbatch --job-name=pd_baseline scripts/kiac_train.sh baseline \
-#     --agent.algorithm.learning-rate 1e-3
+#     --phases.teacher.agent.algorithm.learning-rate 1e-3
 #
 # Runs from the submitting checkout through robot-learning's shared environment.
 #
@@ -46,10 +46,9 @@ echo "=========================================================="
 "$PYTHON" -c "import torch; print('torch      :', torch.__version__, '| cuda', torch.cuda.is_available())"
 
 echo "----------------------------------------------------------"
-"$PYTHON" -m payload_drones.train Mjlab-PayloadTransport-RMA-Phase1 \
-  --agent.max-iterations 2000 \
-  --agent.logger wandb \
-  --agent.experiment-name "$RUN_NAME" \
+"$PYTHON" -m payload_drones.train Mjlab-PayloadTransport-RMA \
+  --phases.teacher.agent.max-iterations 2000 \
+  --phases.teacher.agent.experiment-name "$RUN_NAME" \
   "${EXTRA_ARGS[@]}"
 
 echo "=========================================================="
