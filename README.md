@@ -8,13 +8,15 @@ cd ..
 uv sync --all-packages --locked
 
 cd payload-drones
-uv run --project .. --locked python -m payload_drones.train Mjlab-PayloadTransport-RMA-Phase1
+uv run --project .. --locked python -m payload_drones.train Mjlab-PayloadTransport-RMA
+uv run --project .. --locked python -m payload_drones.evaluate Mjlab-PayloadTransport-RMA --run-name <wandb-name>
 uv run --project .. --locked python -m payload_drones.play Mjlab-PayloadTransport-RMA-Phase1
 uv run --project .. --locked python -m payload_drones.play_stats Mjlab-PayloadTransport-RMA-Phase1
 ```
 
 Training and evaluation require a clean nested git repository. Training records
-the commit and branch in W&B and tags the commit as `runs/<task>/<run-name>`.
+the commit and branch in W&B and tags the commit as
+`runs/<pipeline>/<run-name>`. Evaluation runs one fresh episode for both phases.
 
 ## Reset crash after the shared-environment migration
 

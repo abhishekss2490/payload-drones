@@ -63,7 +63,8 @@ class MARLPhase1Runner(MjlabOnPolicyRunner):
         map_location: str | None = None,
     ) -> dict:
         infos = super().load(path, load_cfg, strict, map_location)
-        self.current_learning_iteration += 1
+        if load_cfg is None or load_cfg.get("iteration", False):
+            self.current_learning_iteration += 1
         if infos and "env_state" in infos:
             _load_trajectory_curriculum(
                 self.env.unwrapped, infos["env_state"].get("trajectory_curriculum")
