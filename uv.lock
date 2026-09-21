@@ -1165,7 +1165,7 @@ requires-dist = [
     { name = "matplotlib" },
     { name = "numpy", specifier = ">=2.3" },
     { name = "robotics-common", extras = ["mjlab", "rsl"], editable = "../robotics-common" },
-    { name = "rsl-rl-lib", git = "https://github.com/varadVaidya/rsl_rl.git?rev=d00baf8cbe194ba46dd19fda5b3b716702ca1962" },
+    { name = "rsl-rl-lib", git = "https://github.com/varadVaidya/rsl_rl.git?rev=e3886a49257f53939711ed9898125bd989138d49" },
     { name = "torch", specifier = "==2.13.0+cu129", index = "https://download.pytorch.org/whl/cu129" },
     { name = "warp-lang", specifier = "==1.16.0", index = "https://pypi.nvidia.com/" },
 ]
@@ -1511,7 +1511,7 @@ provides-extras = ["mjlab", "rsl"]
 [[package]]
 name = "rsl-rl-lib"
 version = "5.4.2"
-source = { git = "https://github.com/varadVaidya/rsl_rl.git?rev=d00baf8cbe194ba46dd19fda5b3b716702ca1962#d00baf8cbe194ba46dd19fda5b3b716702ca1962" }
+source = { git = "https://github.com/varadVaidya/rsl_rl.git?rev=e3886a49257f53939711ed9898125bd989138d49#e3886a49257f53939711ed9898125bd989138d49" }
 dependencies = [
     { name = "gitpython" },
     { name = "numpy" },

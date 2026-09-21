@@ -39,7 +39,7 @@ dev = ["pytest"]
 
 [tool.uv.sources]
 robotics-common = { path = "../robotics-common", editable = true }
-rsl-rl-lib = { git = "https://github.com/varadVaidya/rsl_rl.git", rev = "d00baf8cbe194ba46dd19fda5b3b716702ca1962" }
+rsl-rl-lib = { git = "https://github.com/varadVaidya/rsl_rl.git", rev = "e3886a49257f53939711ed9898125bd989138d49" }
 torch = { index = "pytorch-cu129" }
 warp-lang = { index = "nvidia" }
 
