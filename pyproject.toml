@@ -8,7 +8,12 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "robotics-common[mjlab,rsl]",
     "numpy>=2.3",
-    "torch>=2.7",
+    "matplotlib",
+    # uv applies [tool.uv.sources] only to direct dependencies, so these are
+    # listed here even though robotics-common pulls them in.
+    "rsl-rl-lib",
+    "torch==2.13.0+cu129",
+    "warp-lang==1.16.0",
 ]
 
 [project.entry-points."mjlab.tasks"]
@@ -28,3 +33,22 @@ extend-select = ["I"]
 [tool.ruff.lint.per-file-ignores]
 # Package __init__ files exist to re-export. That is not an unused import.
 "**/__init__.py" = ["F401"]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv.sources]
+robotics-common = { path = "../robotics-common", editable = true }
+rsl-rl-lib = { git = "https://github.com/varadVaidya/rsl_rl.git", rev = "d00baf8cbe194ba46dd19fda5b3b716702ca1962" }
+torch = { index = "pytorch-cu129" }
+warp-lang = { index = "nvidia" }
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com/"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
