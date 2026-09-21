@@ -13,7 +13,6 @@ dependencies = [
     # listed here even though robotics-common pulls them in.
     "rsl-rl-lib",
     "torch==2.13.0+cu129",
-    "warp-lang==1.16.0",
 ]
 
 [project.entry-points."mjlab.tasks"]
@@ -41,12 +40,6 @@ dev = ["pytest"]
 robotics-common = { path = "../robotics-common", editable = true }
 rsl-rl-lib = { git = "https://github.com/varadVaidya/rsl_rl.git", rev = "e3886a49257f53939711ed9898125bd989138d49" }
 torch = { index = "pytorch-cu129" }
-warp-lang = { index = "nvidia" }
-
-[[tool.uv.index]]
-name = "nvidia"
-url = "https://pypi.nvidia.com/"
-explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cu129"
