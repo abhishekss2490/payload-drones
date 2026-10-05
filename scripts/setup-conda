@@ -57,12 +57,14 @@ export PAYLOAD_SETUP_REPORT="$REPORT"
     printf 'Setup report: %s\n' "$REPORT"
     "$CONDA_BIN" list --explicit --prefix "$CONDA_PREFIX" > "$REPORT/conda-explicit.txt"
     "$UV_BIN" --version > "$REPORT/uv-version.txt"
-    # requirements.txt preserves versions, hashes, the PyTorch index, and the
-    # exact RSL-RL git commit. Run from PROJECT for the editable relative paths.
-    "$UV_BIN" export --locked --python "$PYTHON" --format requirements.txt \
-        --emit-index-url --output-file "$REPORT/requirements.txt" --quiet
-    # Avoid a second dependency resolution and preserve Conda's own packages.
-    "$UV_BIN" pip install --python "$PYTHON" --no-deps --requirements "$REPORT/requirements.txt"
+    # pylock preserves exact artifact URLs/hashes and the RSL-RL git commit,
+    # so the PyTorch index cannot shadow unrelated packages from PyPI.
+    # Install local editables separately: exported paths are relative to PROJECT,
+    # while a pylock consumer resolves them relative to the exported file.
+    "$UV_BIN" export --locked --python "$PYTHON" --format pylock.toml \
+        --no-emit-local --output-file "$REPORT/pylock.toml" --quiet
+    "$UV_BIN" pip install --python "$PYTHON" --requirements "$REPORT/pylock.toml"
+    "$UV_BIN" pip install --python "$PYTHON" --no-deps --editable . --editable ../robotics-common
     "$UV_BIN" pip check --python "$PYTHON"
     "$UV_BIN" pip freeze --python "$PYTHON" > "$REPORT/pip-freeze.txt"
     "$PYTHON" - <<'PY'

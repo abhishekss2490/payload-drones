@@ -81,12 +81,13 @@ scripts/setup-conda
 ```
 
 `setup-conda` refuses the base environment and an unexpected Python version. It
-exports `uv.lock` with `--locked`, installs the explicit locked packages without
-resolving another dependency tree, and checks the installed dependencies. The
+exports `uv.lock` as `pylock.toml` with `--locked`, installs the exact artifact
+URLs and hashes, then installs both local editable packages without resolving
+another dependency tree. It checks the installed dependencies afterward. The
 Conda interpreter is targeted explicitly; the local laptop `.venv` is not used.
 
 Audit files go under `logs/server/setup/<timestamp>-<pid>/`: setup output,
-Conda package specification, exported locked requirements, installed package
+Conda package specification, exported package lock, installed package
 list, key version checks, lock hash, and both source commits. Subsequent
 experiments should recreate this environment from the recorded inputs when
 changing dependencies.
