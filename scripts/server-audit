@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Read-only host inventory; safe to run before installing the training stack."""
+
+import json
+import os
+import platform
+import shutil
+import subprocess
+from pathlib import Path
+
+
+def inspect(command):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        return {"command": command, "exit_code": result.returncode,
+                "stdout": result.stdout.strip(), "stderr": result.stderr.strip()}
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"command": command, "error": str(error)}
+
+
+home = Path.home()
+tools = {name: shutil.which(name) for name in
+         ("git", "conda", "mamba", "uv", "tmux", "sbatch", "srun", "sinfo", "nvidia-smi")}
+conda_candidates = [os.environ.get("CONDA_EXE"), tools["conda"],
+                    str(home / "miniconda3/bin/conda"), str(home / "anaconda3/bin/conda"),
+                    str(home / "miniforge3/bin/conda"), "/opt/conda/bin/conda"]
+conda = next((path for path in conda_candidates if path and os.access(path, os.X_OK)), None)
+conda_info = None
+if conda:
+    result = inspect([conda, "info", "--json"])
+    if result.get("exit_code") == 0:
+        data = json.loads(result["stdout"])
+        conda_info = {key: data.get(key) for key in
+                      ("conda_version", "root_prefix", "active_prefix", "platform", "solver")}
+    else:
+        conda_info = {"available": True, "info_query_succeeded": False}
+report = {
+    "host": platform.node(), "platform": platform.platform(),
+    "architecture": platform.machine(), "user": os.environ.get("USER"),
+    "home": str(home), "python": platform.python_version(),
+    "logical_cpus": os.cpu_count(), "tools": tools,
+    "conda": conda_info,
+    "allocation": {key: os.environ.get(key) for key in
+                   ("SLURM_JOB_ID", "SLURM_JOB_GPUS", "CUDA_VISIBLE_DEVICES")},
+    "checks": [inspect(command) for command in (
+        ["nvidia-smi", "--query-gpu=index,name,uuid,driver_version,memory.total,memory.free,utilization.gpu", "--format=csv"],
+        ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,process_name,used_memory", "--format=csv"],
+        ["free", "-h"], ["df", "-h", str(home)], ["git", "--version"],
+    )],
+}
+print(json.dumps(report, indent=2))

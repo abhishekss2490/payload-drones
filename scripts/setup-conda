@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Install the existing uv.lock into an activated, dedicated Conda environment.
+set -euo pipefail
+if [[ ${1:-} == --help || ${1:-} == -h ]]; then
+    echo "usage: conda activate payload-drones; scripts/setup-conda"
+    echo "Requires a dedicated Conda environment with Python 3.12.13 and uv 0.12.2."
+    echo "Installs locked project packages; writes an audit under logs/server/setup/."
+    exit 0
+fi
+if (( $# != 0 )); then
+    echo "Unexpected arguments. See scripts/setup-conda --help." >&2
+    exit 2
+fi
+PROJECT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$PROJECT"
+if [[ -z ${CONDA_PREFIX:-} || ! -d "$CONDA_PREFIX/conda-meta" || ${CONDA_DEFAULT_ENV:-} == base ]]; then
+    echo "Activate a dedicated Conda environment first (not base). See docs/server-setup.md." >&2
+    exit 2
+fi
+CONDA_BIN=${CONDA_EXE:-$(command -v conda || true)}
+if [[ -z $CONDA_BIN ]]; then
+    echo "Cannot find conda. Activate the environment using conda activate." >&2
+    exit 2
+fi
+if [[ $(realpath "$CONDA_PREFIX") == $(realpath "$("$CONDA_BIN" info --base)") ]]; then
+    echo "Refusing to install project packages into the Conda base environment." >&2
+    exit 2
+fi
+PYTHON="$CONDA_PREFIX/bin/python"
+"$PYTHON" - <<'PY'
+import os
+import sys
+from pathlib import Path
+if Path(sys.prefix).resolve() != Path(os.environ["CONDA_PREFIX"]).resolve():
+    raise SystemExit("Python does not belong to the selected Conda environment.")
+if sys.version_info[:3] != (3, 12, 13):
+    raise SystemExit(f"Expected Python 3.12.13 to match the validated stack; found {sys.version}.")
+PY
+if [[ ! -f ../robotics-common/pyproject.toml ]]; then
+    echo "Check out robotics-common beside payload-drones first." >&2
+    exit 2
+fi
+UV_BIN=${UV_BIN:-"$CONDA_PREFIX/bin/uv"}
+if [[ ! -x $UV_BIN ]]; then
+    echo "Install the setup tool in this environment: python -m pip install uv==0.12.2" >&2
+    exit 2
+fi
+UV_VERSION=$("$UV_BIN" --version)
+if [[ ${UV_VERSION%% (*} != "uv 0.12.2" ]]; then
+    echo "This setup was validated with uv 0.12.2. Install that version first." >&2
+    exit 2
+fi
+REPORT="$PROJECT/logs/server/setup/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+mkdir -p "$REPORT"
+export PAYLOAD_SETUP_REPORT="$REPORT"
+{
+    printf 'Setup report: %s\n' "$REPORT"
+    "$CONDA_BIN" list --explicit --prefix "$CONDA_PREFIX" > "$REPORT/conda-explicit.txt"
+    "$UV_BIN" --version > "$REPORT/uv-version.txt"
+    # requirements.txt preserves versions, hashes, the PyTorch index, and the
+    # exact RSL-RL git commit. Run from PROJECT for the editable relative paths.
+    "$UV_BIN" export --locked --python "$PYTHON" --format requirements.txt \
+        --emit-index-url --output-file "$REPORT/requirements.txt" --quiet
+    # Avoid a second dependency resolution and preserve Conda's own packages.
+    "$UV_BIN" pip install --python "$PYTHON" --no-deps --requirements "$REPORT/requirements.txt"
+    "$UV_BIN" pip check --python "$PYTHON"
+    "$UV_BIN" pip freeze --python "$PYTHON" > "$REPORT/pip-freeze.txt"
+    "$PYTHON" - <<'PY'
+import hashlib
+import importlib.metadata as metadata
+import json
+import os
+import platform
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+project = Path.cwd()
+lock_path = project / "uv.lock"
+lock = tomllib.loads(lock_path.read_text())
+key_packages = {"torch", "mjlab", "mujoco", "mujoco-warp", "warp-lang", "rsl-rl-lib", "numpy", "wandb"}
+versions = {}
+for package in lock["package"]:
+    if package["name"] in key_packages:
+        name = package["name"]
+        actual = metadata.version(name)
+        if actual != package["version"]:
+            raise SystemExit(f"Version mismatch: {name}: {actual} != {package['version']}")
+        versions[name] = actual
+repos = {}
+for path in (project, project.parent / "robotics-common"):
+    repos[path.name] = {
+        "path": str(path),
+        "commit": subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True).strip(),
+        "status": subprocess.check_output(["git", "-C", str(path), "status", "--porcelain"], text=True).strip(),
+    }
+report = {"python": platform.python_version(), "executable": sys.executable,
+          "uv_lock_sha256": hashlib.sha256(lock_path.read_bytes()).hexdigest(),
+          "versions": versions, "repositories": repos}
+(Path(os.environ["PAYLOAD_SETUP_REPORT"]) / "environment.json").write_text(json.dumps(report, indent=2) + "\n")
+print(json.dumps(report, indent=2))
+PY
+    echo "Environment installation verified. Run GPU validation on an allocated GPU before training."
+} 2>&1 | tee "$REPORT/setup.log"

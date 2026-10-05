@@ -14,6 +14,11 @@ before starting a run. Training records the project and `robotics-common`
 commits, logs to W&B, and tags the project commit as
 `runs/<pipeline>/<run-name>`.
 
+## Set up the lab GPU server
+
+See [the Conda server setup guide](docs/server-setup.md) for the pinned stack,
+server inventory, environment installation, and validation before training.
+
 ## Train on the laptop GPU
 
 Run from a Linux or WSL2 terminal with an NVIDIA GPU visible to PyTorch:
