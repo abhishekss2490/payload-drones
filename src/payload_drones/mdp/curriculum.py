@@ -1,10 +1,9 @@
-"""Curriculum hooks for progressively sharper payload tracking."""
+"""Team capability helpers; reward weights and tolerances remain fixed."""
 
 from __future__ import annotations
 
 import torch
 
-from mjlab.envs.mdp.curriculums import reward_curriculum
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
 
 
@@ -35,49 +34,7 @@ def team_twr_bin(
     bins = torch.bucketize(twr, bin_edges[1:-1]).clamp(0, num_bins - 1)
     return twr, bins
 
-_ITER = 256
-
-curriculum_terms = {
-    # No coarse-position-std curriculum: the coarse term now uses the heavy-tailed
-    # norm kernel (constant scale=1.5), which is not sparse and needs no bounding.
-    # Precision comes from the Gaussian fine term, whose std the curriculum tightens.
-    "payload_position_fine_std": CurriculumTermCfg(
-        func=reward_curriculum,
-        params={"reward_name": "payload_position_fine", "stages": [
-            {"step": 1000 * _ITER, "params": {"std": 0.15}},
-            {"step": 1500 * _ITER, "params": {"std": 0.10}},
-        ]},
-    ),
-    # No orientation-std curriculum: attitude is weakly actuated (three
-    # near-vertical, pull-only cables), so the kernel is held wide at 1.0 rather
-    # than tightened. Tightening it toward 0.30 removed gradient at the 1+ rad
-    # tilts the payload actually reaches, before attitude was ever being held.
-    "payload_velocity_tracking_std": CurriculumTermCfg(
-        func=reward_curriculum,
-        params={"reward_name": "payload_velocity_tracking", "stages": [
-            {"step": 1000 * _ITER, "params": {"std": 0.75}},
-            {"step": 1500 * _ITER, "params": {"std": 0.50}},
-        ]},
-    ),
-    "payload_ang_vel_std": CurriculumTermCfg(
-        func=reward_curriculum,
-        params={"reward_name": "payload_ang_vel_penalty", "stages": [
-            {"step": 1000 * _ITER, "params": {"std": 1.50}},
-            {"step": 1500 * _ITER, "params": {"std": 1.00}},
-        ]},
-    ),
-    "action_rate_weight": CurriculumTermCfg(
-        func=reward_curriculum,
-        params={"reward_name": "action_rate", "stages": [
-            {"step": 1000 * _ITER, "weight": -0.001},
-            {"step": 1500 * _ITER, "weight": -0.002},
-        ]},
-    ),
-    "body_rate_weight": CurriculumTermCfg(
-        func=reward_curriculum,
-        params={"reward_name": "body_rate_penalty", "stages": [
-            {"step": 1000 * _ITER, "weight": -0.001},
-            {"step": 1500 * _ITER, "weight": -0.002},
-        ]},
-    ),
-}
+# The composite reward uses fixed weights and tolerances. Keep the trajectory
+# command's TWR helpers above: trajectory generation is independent of these
+# reward schedules, and its existing rho=0.25 setting is unchanged.
+curriculum_terms: dict[str, CurriculumTermCfg] = {}

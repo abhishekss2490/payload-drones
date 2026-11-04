@@ -1,0 +1,12 @@
+robotics_common: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/deps/robotics-common/src/robotics_common/__init__.py
+rsl_rl: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/deps/rsl-rl/rsl_rl/__init__.py
+payload_drones: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/frozen-source/src/payload_drones/__init__.py
+Preflight passed: Python /home/kjishnu/varadmandar/abhishek-payload/archive-2026-10/payload-drones/.venv/bin/python, Torch 2.13.0+cu129, source a1954c2b8d77e6e0e2131e999c41f93a90cc0147, model_1400.
+Results: /home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/evaluation/model_1400_diag_failure_job73184
+Starting failure
+Seed 1. Selected first events and same-phase survivor; 100 Hz samples.
+Team 7: first reset step 2421, ['payload_far_from_goal'], position replay discrepancy 0.000000 m RMS
+Team 12: first reset step 2552, ['any_quad_ground_contact'], position replay discrepancy 0.000000 m RMS
+Team 8: first reset step None, [], position replay discrepancy 0.000000 m RMS
+before_failure.csv compares the two one-second windows before each event. The reset frame is excluded. See telemetry.npz for individual motors and cables.
+

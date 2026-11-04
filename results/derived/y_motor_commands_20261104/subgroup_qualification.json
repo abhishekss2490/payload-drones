@@ -1,0 +1,108 @@
+{
+  "threshold_power_above_10Hz": 0.01,
+  "eligible": 79,
+  "above_threshold": [
+    {
+      "seed": "0",
+      "team": "8",
+      "u_step_rms": "0.010827144071213945",
+      "power_above_10Hz_fraction": "0.023157993702744427"
+    },
+    {
+      "seed": "1",
+      "team": "4",
+      "u_step_rms": "0.0350275349292088",
+      "power_above_10Hz_fraction": "0.8410902968151402"
+    },
+    {
+      "seed": "1",
+      "team": "8",
+      "u_step_rms": "0.03600459205608707",
+      "power_above_10Hz_fraction": "0.5918630973977145"
+    },
+    {
+      "seed": "2",
+      "team": "1",
+      "u_step_rms": "0.08885352776727308",
+      "power_above_10Hz_fraction": "0.8963378278757085"
+    },
+    {
+      "seed": "2",
+      "team": "2",
+      "u_step_rms": "0.020661968093310286",
+      "power_above_10Hz_fraction": "0.04138835267767723"
+    },
+    {
+      "seed": "2",
+      "team": "4",
+      "u_step_rms": "0.02873913368430174",
+      "power_above_10Hz_fraction": "0.9557828686012216"
+    },
+    {
+      "seed": "2",
+      "team": "10",
+      "u_step_rms": "0.009452874588995692",
+      "power_above_10Hz_fraction": "0.4509131720340207"
+    },
+    {
+      "seed": "2",
+      "team": "13",
+      "u_step_rms": "0.005540184660812821",
+      "power_above_10Hz_fraction": "0.6744951531873244"
+    },
+    {
+      "seed": "2",
+      "team": "14",
+      "u_step_rms": "0.012211440396695852",
+      "power_above_10Hz_fraction": "0.7527696937101173"
+    },
+    {
+      "seed": "3",
+      "team": "2",
+      "u_step_rms": "0.03728280579772192",
+      "power_above_10Hz_fraction": "0.6190722100021019"
+    },
+    {
+      "seed": "3",
+      "team": "8",
+      "u_step_rms": "0.04746526471535282",
+      "power_above_10Hz_fraction": "0.6769742919747181"
+    },
+    {
+      "seed": "3",
+      "team": "13",
+      "u_step_rms": "0.0004685268758541206",
+      "power_above_10Hz_fraction": "0.012568569143042994"
+    },
+    {
+      "seed": "3",
+      "team": "15",
+      "u_step_rms": "0.04025702189586472",
+      "power_above_10Hz_fraction": "0.013832387288135147"
+    },
+    {
+      "seed": "4",
+      "team": "1",
+      "u_step_rms": "0.025361013547830647",
+      "power_above_10Hz_fraction": "0.06106283178006688"
+    },
+    {
+      "seed": "4",
+      "team": "6",
+      "u_step_rms": "0.02242571942381265",
+      "power_above_10Hz_fraction": "0.906177439165566"
+    },
+    {
+      "seed": "4",
+      "team": "9",
+      "u_step_rms": "0.04985805868854021",
+      "power_above_10Hz_fraction": "0.3590623302032594"
+    },
+    {
+      "seed": "4",
+      "team": "15",
+      "u_step_rms": "0.05537271755584524",
+      "power_above_10Hz_fraction": "0.9587826280889012"
+    }
+  ]
+}

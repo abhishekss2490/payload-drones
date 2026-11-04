@@ -8,7 +8,7 @@
 #   sbatch --job-name=pd_baseline scripts/kiac_train.sh baseline \
 #     --phases.teacher.agent.algorithm.learning-rate 1e-3
 #
-# Runs from the submitting checkout through robot-learning's shared environment.
+# Runs from the submitting checkout through its project environment.
 #
 # The commit is recorded in the log rather than passed in. Sweeps get reviewed
 # hours later, and a curve with no provenance is not evidence.
@@ -28,8 +28,13 @@ RUN_NAME="${1:?usage: kiac_train.sh <RUN_NAME> [extra args...]}"
 shift
 EXTRA_ARGS=("$@")
 
-REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-PYTHON="$(dirname "$REPO")/.venv/bin/python"
+# sbatch spools a copy of this file; submit from the project root.
+if [[ -n ${SLURM_JOB_ID:-} ]]; then
+    REPO="${SLURM_SUBMIT_DIR:?submit this script from the project root}"
+else
+    REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+fi
+PYTHON="$REPO/.venv/bin/python"
 cd "$REPO"
 export PYTHONUNBUFFERED=1
 export GIT_PYTHON_REFRESH=quiet
@@ -47,7 +52,7 @@ echo "=========================================================="
 
 echo "----------------------------------------------------------"
 "$PYTHON" -m payload_drones.train Mjlab-PayloadTransport-RMA \
-  --phases.teacher.agent.max-iterations 2000 \
+  --phases.teacher.agent.max-iterations 6000 \
   --phases.teacher.agent.experiment-name "$RUN_NAME" \
   "${EXTRA_ARGS[@]}"
 

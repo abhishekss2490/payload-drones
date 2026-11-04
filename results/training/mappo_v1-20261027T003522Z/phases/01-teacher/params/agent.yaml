@@ -1,0 +1,107 @@
+seed: 4551
+num_steps_per_env: 256
+max_iterations: 6000
+obs_groups:
+  actor: !!python/tuple
+  - policy
+  - payload_trajectory
+  - agent_dynamics
+  critic: !!python/tuple
+  - critic
+  - payload_trajectory
+save_interval: 100
+experiment_name: mappo_v1
+run_name: mappo_v1-20261027T003522Z
+logger:
+  class_name: WandbLogWriter
+  project_name: payload-drones
+  run_name: mappo_v1-20261027T003522Z
+  group: Mjlab-PayloadTransport-RMA
+  notes: 'Commit: a1954c2b8d77e6e0e2131e999c41f93a90cc0147
+
+    Branch: ppo/per-agent-clip
+
+    robotics-common: 62ed0f3ccb5fa748cdd4ad3db40fd37b539eb26b'
+  tags: []
+  phase: teacher
+  base_path: /home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/Mjlab-PayloadTransport-RMA/mappo_v1-20261027T003522Z
+wandb_project: payload-drones
+wandb_tags: !!python/tuple []
+resume: false
+load_run: .*
+load_checkpoint: model_.*.pt
+clip_actions: 1.0
+upload_model: true
+class_name: OnPolicyRunner
+actor:
+  hidden_dims: !!python/tuple
+  - 32
+  - 32
+  activation: elu
+  obs_normalization: false
+  cnn_cfg: null
+  distribution_cfg:
+    class_name: payload_drones.rl.models.SharedAgentGaussianDistribution
+    init_std: 0.15
+    std_type: log
+  rnn_type: null
+  rnn_hidden_dim: 256
+  rnn_num_layers: 1
+  class_name: payload_drones.rl.models.MARLTeacherModel
+  dyn_encoder_dims: !!python/tuple
+  - 32
+  - 16
+  dyn_latent_dim: 8
+  traj_latent_dim: 16
+  traj_conv_channels: !!python/tuple
+  - 16
+  - 8
+  traj_kernel_sizes: !!python/tuple
+  - 5
+  - 3
+  traj_strides: !!python/tuple
+  - 2
+  - 2
+critic:
+  hidden_dims: !!python/tuple
+  - 32
+  - 32
+  activation: elu
+  obs_normalization: false
+  cnn_cfg: null
+  distribution_cfg: null
+  rnn_type: null
+  rnn_hidden_dim: 256
+  rnn_num_layers: 1
+  class_name: payload_drones.rl.models.MARLTeacherModel
+  dyn_encoder_dims: !!python/tuple
+  - 32
+  - 16
+  dyn_latent_dim: 8
+  traj_latent_dim: 16
+  traj_conv_channels: !!python/tuple
+  - 16
+  - 8
+  traj_kernel_sizes: !!python/tuple
+  - 5
+  - 3
+  traj_strides: !!python/tuple
+  - 2
+  - 2
+algorithm:
+  num_learning_epochs: 5
+  num_mini_batches: 16
+  learning_rate: 0.001
+  schedule: adaptive
+  gamma: 0.995
+  lam: 0.95
+  entropy_coef: 0.002
+  desired_kl: 0.015
+  max_grad_norm: 1.0
+  value_loss_coef: 1.0
+  use_clipped_value_loss: true
+  clip_param: 0.2
+  normalize_advantage_per_mini_batch: false
+  optimizer: adam
+  share_cnn_encoders: false
+  class_name: payload_drones.rl.algorithms.MAPPO

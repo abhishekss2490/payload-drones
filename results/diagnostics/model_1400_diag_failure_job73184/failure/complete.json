@@ -1,0 +1,73 @@
+{
+  "mode": "failure",
+  "seed": 1,
+  "team_ids": [
+    7,
+    12,
+    8
+  ],
+  "phase": 0,
+  "cm": 0,
+  "steps": 2600,
+  "dt": 0.01,
+  "manifest": "c4a4e4fb8130bb0fdc2aad87da27c99a66bf4dd8d0c79b90a44965ed02d7cdc9",
+  "commit": "a1954c2b8d77e6e0e2131e999c41f93a90cc0147",
+  "checkpoint": "d2fce7251915b55228000b1f74f7596b87afccca7015f674919d4b3a5d05986a",
+  "settings": {
+    "verified_fields": [
+      "commands.payload_pose",
+      "episode_length_s",
+      "decimation",
+      "physics_timestep",
+      "termination_names",
+      "obs_groups",
+      "actor",
+      "clip_actions",
+      "randomization.arm_sampling_mode",
+      "randomization.base_arm_range",
+      "randomization.arm_relative_spread",
+      "randomization.loaded_twr_floor",
+      "randomization.loaded_twr_ceiling",
+      "randomization.scale_cfg",
+      "failure_probability",
+      "termination.time_out",
+      "termination.payload_ground_contact",
+      "termination.any_quad_ground_contact",
+      "termination.payload_far_from_goal",
+      "termination.any_quad_tumbling",
+      "termination.quad_collision",
+      "termination.cable_overextension",
+      "termination.nan_detection",
+      "reward.payload_tracking",
+      "reward.action_rate",
+      "reward.body_rate_penalty",
+      "reward.quad_proximity_penalty",
+      "reward.cable_slack_penalty",
+      "reward.crash_penalty"
+    ],
+    "env_sha256": "7a07db1a2efdbeef6a12c8744eae3361c5c063a758c052b649cfb41175b21585",
+    "agent_sha256": "ce84ba2b0962ed6cbef80c0df4b076020cc17b48f5c95d4f76ea1a1d23b017f1"
+  },
+  "gpu": "NVIDIA RTX A5000",
+  "mujoco": "3.11.0",
+  "torch": "2.13.0+cu129",
+  "mass_kg": [
+    0.1942359209060669,
+    0.12035608291625977,
+    0.4939361810684204
+  ],
+  "actuator_names": [
+    "quad_0/motor_front_left",
+    "quad_0/motor_front_right",
+    "quad_0/motor_back_right",
+    "quad_0/motor_back_left",
+    "quad_1/motor_front_left",
+    "quad_1/motor_front_right",
+    "quad_1/motor_back_right",
+    "quad_1/motor_back_left",
+    "quad_2/motor_front_left",
+    "quad_2/motor_front_right",
+    "quad_2/motor_back_right",
+    "quad_2/motor_back_left"
+  ]
+}

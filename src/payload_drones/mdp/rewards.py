@@ -7,7 +7,7 @@ import math
 import torch
 
 from mjlab.envs import ManagerBasedRlEnv
-from mjlab.envs.mdp.rewards import is_alive, is_terminated
+from mjlab.envs.mdp.rewards import is_terminated
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.utils.lab_api.math import quat_error_magnitude
 
@@ -69,6 +69,42 @@ def payload_ang_vel_penalty(env: ManagerBasedRlEnv, std: float = 1.0) -> torch.T
     return _exp_kernel(_payload(env).data.root_link_ang_vel_b.square().sum(-1), std)
 
 
+
+def payload_tracking_reward(
+    env: ManagerBasedRlEnv,
+    command_name: str = "payload_pose",
+    position_scale: float = 1.5,
+    position_fine_std: float = 0.5,
+    velocity_std: float = 0.5,
+    orientation_scale: float = 1.5,
+    angular_velocity_std: float = 2.0,
+) -> torch.Tensor:
+    """Position-gated team tracking score in [0, 1], before manager dt scaling.
+
+    P = 0.625 * coarse_position + 0.375 * fine_position.
+    Return P * (0.375 * velocity + 0.500 * orientation + 0.125 * angular_stability).
+    Widths specify the error at which a component equals 0.1. Angular stability
+    assumes the current task's static attitude reference (zero desired body rate).
+    """
+    payload = _payload(env)
+    reference = env.command_manager.get_term(command_name).command
+    position_error = payload.data.root_link_pos_w - (reference[:, :3] + env.scene.env_origins)
+    position_error_sq = position_error.square().sum(-1)
+    position = (
+        0.625 * _norm_kernel(position_error.norm(dim=-1), position_scale)
+        + 0.375 * _exp_kernel(position_error_sq, position_fine_std)
+    )
+    velocity_error_sq = (payload.data.root_link_lin_vel_w - reference[:, 7:10]).square().sum(-1)
+    orientation_error = quat_error_magnitude(reference[:, 3:7], payload.data.root_link_quat_w)
+    angular_velocity_sq = payload.data.root_link_ang_vel_b.square().sum(-1)
+    motion = (
+        0.375 * _exp_kernel(velocity_error_sq, velocity_std)
+        + 0.500 * _norm_kernel(orientation_error, orientation_scale)
+        + 0.125 * _exp_kernel(angular_velocity_sq, angular_velocity_std)
+    )
+    return position * motion
+
+
 def _masked_mean(env: ManagerBasedRlEnv, values: torch.Tensor) -> torch.Tensor:
     mask = env.team_state.active_mask.float() if hasattr(env, "team_state") else torch.ones_like(values)
     return (values * mask).sum(-1) / mask.sum(-1).clamp_min(1)
@@ -94,7 +130,7 @@ def quad_proximity_penalty(env: ManagerBasedRlEnv, min_separation: float = 0.5) 
     pos = torch.stack([env.scene[f"quad_{i}"].data.root_link_pos_w for i in range(N_AGENTS)], dim=1)
     distances = torch.cdist(pos, pos)
     pairs = torch.triu_indices(N_AGENTS, N_AGENTS, offset=1, device=env.device)
-    return torch.relu(min_separation - distances[:, pairs[0], pairs[1]]).mean(-1)
+    return torch.relu(1.0 - distances[:, pairs[0], pairs[1]] / min_separation).mean(-1)
 
 
 def cable_slack_penalty(env: ManagerBasedRlEnv) -> torch.Tensor:
@@ -110,29 +146,30 @@ def cable_slack_penalty(env: ManagerBasedRlEnv) -> torch.Tensor:
     return _masked_mean(env, torch.stack(values, -1))
 
 
+# One positive composite term; all shaping parameters remain fixed during training.
+# RewardManager applies dt once to every configured term. At dt=0.01, the failure
+# weight below gives a -2 event cost; a time limit alone is not a failure.
 reward_terms = {
-    # Coarse position + orientation use the heavy-tailed CoRL kernel (exp of the
-    # norm), scale 1.5. It keeps gradient across the 0.7-1.8 m / ~1 rad range the
-    # payload actually drifts to, where the old Gaussian went dead -- this is the
-    # structural fix for loose tracking, replacing the std-tuning workarounds.
-    # No coarse curriculum: the kernel is not sparse, so it is held constant and
-    # precision comes from the Gaussian fine term below. (`scale` is also the CLI
-    # override point for a capture-width ablation.)
-    "payload_position_tracking": RewardTermCfg(func=payload_position_tracking, weight=0.30, params={"scale": 1.5}),
-    "payload_position_fine": RewardTermCfg(func=payload_position_fine, weight=0.20, params={"std": 0.20}),
-    "payload_orientation_tracking": RewardTermCfg(func=payload_orientation_tracking, weight=0.20, params={"scale": 1.5}),
-    "payload_velocity_tracking": RewardTermCfg(func=payload_velocity_tracking, weight=0.15, params={"std": 1.0}),
-    "payload_ang_vel_penalty": RewardTermCfg(func=payload_ang_vel_penalty, weight=0.15, params={"std": 2.0}),
-    # At the worst bounded shaping values, a live step still has positive
-    # reward: 0.10 alive - 0.05 body-rate - 0.008 action-rate - 0.005 proximity
-    # - 0.004 slack = +0.033 before non-negative tracking terms.  Since a real
-    # termination additionally costs 2.0 after dt scaling, early termination
-    # cannot improve return by escaping future shaping costs.
-    "is_alive": RewardTermCfg(func=is_alive, weight=0.10),
+    "payload_tracking": RewardTermCfg(
+        func=payload_tracking_reward,
+        weight=1.0,
+        params={
+            "position_scale": 1.5,
+            "position_fine_std": 0.5,
+            "velocity_std": 0.5,
+            "orientation_scale": 1.5,
+            "angular_velocity_std": 2.0,
+        },
+    ),
     "action_rate": RewardTermCfg(func=action_rate, weight=0.0),
-    "body_rate_penalty": RewardTermCfg(func=body_rate_penalty, weight=0.0, params={"max_cost": 25.0}),
-    "quad_proximity_penalty": RewardTermCfg(func=quad_proximity_penalty, weight=-0.01),
+    "body_rate_penalty": RewardTermCfg(
+        func=body_rate_penalty, weight=0.0, params={"max_cost": 25.0}
+    ),
+    # Normalized proximity cost in [0,1]; this preserves the old physical cost:
+    # -0.005 * mean(relu(1-d/0.5)) == -0.01 * mean(relu(0.5-d)).
+    "quad_proximity_penalty": RewardTermCfg(
+        func=quad_proximity_penalty, weight=-0.005, params={"min_separation": 0.5}
+    ),
     "cable_slack_penalty": RewardTermCfg(func=cable_slack_penalty, weight=-0.004),
-    # Rewards are scaled by dt=0.01, so this is a -2.0 terminal event cost.
     "crash_penalty": RewardTermCfg(func=is_terminated, weight=-200.0),
 }

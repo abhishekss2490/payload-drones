@@ -49,6 +49,8 @@ def make_payload_env_cfg(
     arm_relative_spread: float = 0.10,
     loaded_twr_floor: float = 2.0,
     loaded_twr_ceiling: float = 3.0,
+    initial_payload_speed: float = 0.5,
+    speed_anneal_iterations: int = 750,
 ) -> ManagerBasedRlEnvCfg:
     """Build the fixed-three-agent environment; default failure is evaluation-off.
 
@@ -128,6 +130,8 @@ def make_payload_env_cfg(
             episode_length_s=episode_length_s,
             trajectory_enabled=trajectory_enabled,
             max_payload_speed=max_payload_speed,
+            initial_payload_speed=initial_payload_speed,
+            speed_anneal_iterations=0 if play else speed_anneal_iterations,
         )},
         events=events,
         rewards=reward_terms,

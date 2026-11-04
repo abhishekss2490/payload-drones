@@ -1,0 +1,331 @@
+{
+  "checkpoint": "/home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/Mjlab-PayloadTransport-RMA/mappo_v1-20261027T003522Z/phases/01-teacher/model_1400.pt",
+  "checkpoint_sha256": "d2fce7251915b55228000b1f74f7596b87afccca7015f674919d4b3a5d05986a",
+  "smoke_test_untrained": false,
+  "commit": "a1954c2b8d77e6e0e2131e999c41f93a90cc0147",
+  "branch": "ppo/per-agent-clip",
+  "evaluator_sha256": "ebb2a6668dfeb2b7113161f6c45ba73414e9007e0b8792b911611f1605011fbf",
+  "upstream_commit": "1facd56c7386853df8b6df398c5e0635e2f8567c",
+  "upstream_loop_blob": "72945db101b9f8f5db4409dad01de5863915344c",
+  "arguments": {
+    "checkpoint": "/home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/Mjlab-PayloadTransport-RMA/mappo_v1-20261027T003522Z/phases/01-teacher/model_1400.pt",
+    "smoke": false,
+    "max_steps": 15462,
+    "no_video": false,
+    "expected_sha256": "d2fce7251915b55228000b1f74f7596b87afccca7015f674919d4b3a5d05986a",
+    "num_envs": 16,
+    "video_env": 0,
+    "frame_skip": 2,
+    "out_dir": "/home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/evaluation/model_1400_triple8_job71148/seed_1",
+    "seed": 1,
+    "period": 24.0,
+    "amp_x": 2.25,
+    "amp_y": 1.2,
+    "z": 1.25,
+    "ramp": 6.0,
+    "refresh": 5.0,
+    "plot_window": 40.0,
+    "plot_every": 30.0
+  },
+  "steps": 15462,
+  "completed_requested_steps": true,
+  "simulation_seconds": 154.62,
+  "control_dt_s": 0.01,
+  "position_rmse_m": 1.1123793120776395,
+  "mean_tilt_deg": 21.62580671487647,
+  "env_resets": 55,
+  "per_environment_resets": [
+    5,
+    5,
+    1,
+    6,
+    3,
+    6,
+    4,
+    5,
+    0,
+    4,
+    1,
+    1,
+    7,
+    1,
+    1,
+    5
+  ],
+  "completed_period_windows": 6,
+  "per_lap_mean_environment_rmse_m": [
+    1.0230177640914917,
+    1.1061334609985352,
+    1.1453614234924316,
+    1.1152465343475342,
+    1.13523530960083,
+    1.1030774116516113
+  ],
+  "policy_state_unchanged": true,
+  "verified_saved_settings": {
+    "verified_fields": [
+      "commands.payload_pose",
+      "episode_length_s",
+      "decimation",
+      "physics_timestep",
+      "termination_names",
+      "obs_groups",
+      "actor",
+      "clip_actions",
+      "randomization.arm_sampling_mode",
+      "randomization.base_arm_range",
+      "randomization.arm_relative_spread",
+      "randomization.loaded_twr_floor",
+      "randomization.loaded_twr_ceiling",
+      "randomization.scale_cfg",
+      "failure_probability",
+      "termination.time_out",
+      "termination.payload_ground_contact",
+      "termination.any_quad_ground_contact",
+      "termination.payload_far_from_goal",
+      "termination.any_quad_tumbling",
+      "termination.quad_collision",
+      "termination.cable_overextension",
+      "termination.nan_detection",
+      "reward.payload_tracking",
+      "reward.action_rate",
+      "reward.body_rate_penalty",
+      "reward.quad_proximity_penalty",
+      "reward.cable_slack_penalty",
+      "reward.crash_penalty"
+    ],
+    "env_sha256": "7a07db1a2efdbeef6a12c8744eae3361c5c063a758c052b649cfb41175b21585",
+    "agent_sha256": "ce84ba2b0962ed6cbef80c0df4b076020cc17b48f5c95d4f76ea1a1d23b017f1"
+  },
+  "initial_team": {
+    "payload_mass": [
+      0.5963573455810547,
+      0.1464177966117859,
+      0.06608280539512634,
+      0.0708165168762207,
+      0.03839313983917236,
+      0.21968519687652588,
+      0.19444948434829712,
+      0.13716340065002441,
+      0.4939361810684204,
+      0.32109737396240234,
+      0.2393484115600586,
+      0.25678229331970215,
+      0.05615946650505066,
+      0.05817022919654846,
+      0.10583096742630005,
+      0.07490086555480957
+    ],
+    "cable_length": [
+      [
+        0.7145613431930542,
+        0.790201723575592,
+        0.683337926864624
+      ],
+      [
+        0.7975290417671204,
+        0.6241347193717957,
+        0.536348283290863
+      ],
+      [
+        0.6331849694252014,
+        0.5493639707565308,
+        0.5463244915008545
+      ],
+      [
+        0.6236404180526733,
+        0.6984702348709106,
+        0.6083724498748779
+      ],
+      [
+        0.6319389343261719,
+        0.7387539148330688,
+        0.6205486059188843
+      ],
+      [
+        0.5542300343513489,
+        0.7449280023574829,
+        0.7681639790534973
+      ],
+      [
+        0.7401136755943298,
+        0.7024153470993042,
+        0.5228847861289978
+      ],
+      [
+        0.6023218035697937,
+        0.7398697733879089,
+        0.5095885992050171
+      ],
+      [
+        0.5770130157470703,
+        0.63043212890625,
+        0.7802634239196777
+      ],
+      [
+        0.6225400567054749,
+        0.5550208687782288,
+        0.7569448947906494
+      ],
+      [
+        0.7746115922927856,
+        0.6773839592933655,
+        0.7343572974205017
+      ],
+      [
+        0.5185176134109497,
+        0.5740352869033813,
+        0.6333361268043518
+      ],
+      [
+        0.5783447027206421,
+        0.6135074496269226,
+        0.5028519630432129
+      ],
+      [
+        0.5322632193565369,
+        0.6437389850616455,
+        0.7636951208114624
+      ],
+      [
+        0.5876163244247437,
+        0.7003024220466614,
+        0.6652340888977051
+      ],
+      [
+        0.6339297890663147,
+        0.5877269506454468,
+        0.5067524313926697
+      ]
+    ],
+    "margin": [
+      2.4300038814544678,
+      2.475831985473633,
+      2.697253465652466,
+      1.964202642440796,
+      2.6284947395324707,
+      2.372675657272339,
+      2.1791536808013916,
+      2.861520290374756,
+      2.0538864135742188,
+      2.719395875930786,
+      2.1482326984405518,
+      2.184868812561035,
+      2.3757495880126953,
+      2.1223044395446777,
+      2.308058023452759,
+      2.52190899848938
+    ],
+    "active_mask": [
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ]
+    ]
+  },
+  "environment_config_seed": 1,
+  "initial_manifest_sha256": "c4a4e4fb8130bb0fdc2aad87da27c99a66bf4dd8d0c79b90a44965ed02d7cdc9",
+  "baseline_pairing": {
+    "checked": true,
+    "baseline_job": 71119,
+    "seed": 1,
+    "physical_manifest_exact_match": true,
+    "initial_state_absolute_tolerance": 1e-06
+  },
+  "runtime": {
+    "torch": "2.13.0+cu129",
+    "mujoco": "3.11.0",
+    "numpy": "2.5.2",
+    "cuda": "12.9",
+    "gpu": "NVIDIA RTX A5000"
+  },
+  "seed_protocol": "Explicit env_cfg.seed before construction; actor loading and RNG draw order otherwise unchanged",
+  "video_rendering": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50.0,
+    "appearance": "Native model and floor; gold reference/target, cyan payload trail only; no drone trails; no numerical HUD",
+    "camera": "Fixed three-quarter view; azimuth125 elevation-30 distance7.5, lookat origin+[0,0,z+.30]",
+    "shadows": false,
+    "state_archive": "video_states.npz and render_model_*.mjb"
+  },
+  "metric_convention": "Upstream continuous script: all post-step samples, including post-auto-reset states; report reset counts alongside errors.",
+  "lap_convention": "Consecutive period-sized time windows from t=0, including startup ramp; last partial window excluded from per-lap list.",
+  "comparison_status": "Separate larger-path diagnostic:3x horizontal amplitudes, period, ramp and duration versus job71119; matched initial teams checked. Not the original upstream-default benchmark."
+}

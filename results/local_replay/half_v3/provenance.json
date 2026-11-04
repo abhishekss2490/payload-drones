@@ -1,0 +1,58 @@
+{
+  "setting": "half",
+  "checkpoint_sha256": "d2fce7251915b55228000b1f74f7596b87afccca7015f674919d4b3a5d05986a",
+  "verified": {
+    "verified_fields": [
+      "commands.payload_pose",
+      "episode_length_s",
+      "decimation",
+      "physics_timestep",
+      "termination_names",
+      "obs_groups",
+      "actor",
+      "clip_actions",
+      "randomization.arm_sampling_mode",
+      "randomization.base_arm_range",
+      "randomization.arm_relative_spread",
+      "randomization.loaded_twr_floor",
+      "randomization.loaded_twr_ceiling",
+      "randomization.scale_cfg",
+      "failure_probability",
+      "termination.time_out",
+      "termination.payload_ground_contact",
+      "termination.any_quad_ground_contact",
+      "termination.payload_far_from_goal",
+      "termination.any_quad_tumbling",
+      "termination.quad_collision",
+      "termination.cable_overextension",
+      "termination.nan_detection",
+      "reward.payload_tracking",
+      "reward.action_rate",
+      "reward.body_rate_penalty",
+      "reward.quad_proximity_penalty",
+      "reward.cable_slack_penalty",
+      "reward.crash_penalty"
+    ],
+    "env_sha256": "7a07db1a2efdbeef6a12c8744eae3361c5c063a758c052b649cfb41175b21585",
+    "agent_sha256": "ce84ba2b0962ed6cbef80c0df4b076020cc17b48f5c95d4f76ea1a1d23b017f1"
+  },
+  "initial_pairing": {
+    "qpos_max_abs": 0.0,
+    "qvel_max_abs": 0.0,
+    "manifest_match": true
+  },
+  "period": 48.0,
+  "runtime": {
+    "torch": "2.13.0+cu129",
+    "mujoco": "3.11.0",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU"
+  },
+  "physics_dt": 0.005,
+  "dt": 0.01,
+  "actor_unchanged": true,
+  "steps": 6000,
+  "local_vs_server_position_rmse": 1.7566144379088655e-05,
+  "max_abs_reference_difference": 0.0,
+  "local_resets": 1,
+  "server_resets_same_duration": 1
+}

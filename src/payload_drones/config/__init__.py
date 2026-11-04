@@ -30,7 +30,10 @@ register_mjlab_task(
 )
 register_mjlab_task(
     task_id="Mjlab-PayloadTransport-RMA-Phase2",
-    env_cfg=make_payload_env_cfg(include_history=True, include_team_probe=False),
+    # Distill the teacher at the final task speed, without repeating Phase 1's ramp.
+    env_cfg=make_payload_env_cfg(
+        include_history=True, include_team_probe=False, speed_anneal_iterations=0
+    ),
     play_env_cfg=make_payload_env_cfg(
         num_envs=1, include_history=True, include_team_probe=True, play=True
     ),

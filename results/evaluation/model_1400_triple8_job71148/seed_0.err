@@ -1,0 +1,2 @@
+/home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/.venv/lib/python3.12/site-packages/mujoco_warp/_src/io.py:713: UserWarning: MULTICCD is enabled, but the scene contains CCD pairs without multicontact support: [('CYLINDER', 'CYLINDER'), ('CYLINDER', 'BOX')]. At most 1 contact will be generated for these pairs.
+  warnings.warn(

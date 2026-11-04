@@ -35,7 +35,7 @@ NUM_STEPS_PER_ENV_PHASE2 = 48
 _SHARED_STD = {
     "class_name": "payload_drones.rl.models.SharedAgentGaussianDistribution",
     "init_std": 0.15,
-    "std_type": "scalar",
+    "std_type": "log",
 }
 
 
@@ -45,7 +45,7 @@ def payload_rma_phase1_cfg() -> RslRlOnPolicyRunnerCfg:
     return RslRlOnPolicyRunnerCfg(
         seed=4551,
         num_steps_per_env=NUM_STEPS_PER_ENV,
-        max_iterations=2000,
+        max_iterations=6000,
         save_interval=100,
         experiment_name="payload_rma_phase1",
         logger="wandb",
@@ -54,24 +54,26 @@ def payload_rma_phase1_cfg() -> RslRlOnPolicyRunnerCfg:
         actor=actor,
         critic=critic,
         algorithm=RslRlPpoAlgorithmCfg(
-            # The policy distribution is joint over three agents, and its KL
-            # is the sum of their per-agent KLs.  Use a conservative update and
-            # make the configured KL target active; Tyro exposes every field as
-            # ``--agent.algorithm.*`` for the aggressive-PPO ablation.
+            # Clip per-drone ratios and average their surrogate losses.
+            # Keep the existing joint-KL controller and team critic.
+            class_name="payload_drones.rl.algorithms.MAPPO",
+            # Team advantages are normalized once over the rollout, then broadcast.
+            normalize_advantage_per_mini_batch=False,
             num_learning_epochs=5,
             num_mini_batches=16,
             learning_rate=1e-3,
             schedule="adaptive",
             gamma=0.995,
             lam=0.95,
-            entropy_coef=0.0,
+            entropy_coef=0.002,  # Constant coefficient on per-drone mean entropy.
             desired_kl=0.015,
             max_grad_norm=1.0,
             clip_param=0.2,
         ),
         obs_groups={
             "actor": ("policy", "payload_trajectory", "agent_dynamics"),
-            "critic": ("critic",),
+            # Same actor-owned trajectory latent, detached on the value-loss path.
+            "critic": ("critic", "payload_trajectory"),
         },
     )
 

@@ -1,0 +1,204 @@
+{
+  "status": "COMPLETE",
+  "expected_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "included_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "missing_seeds": [],
+  "rejected_seeds": {},
+  "evaluation_initial_teams": 80,
+  "checkpoint_sha256": "d2fce7251915b55228000b1f74f7596b87afccca7015f674919d4b3a5d05986a",
+  "per_seed": [
+    {
+      "seed": 0,
+      "position_rmse_m": 1.1116512843300805,
+      "velocity_rmse_m_s": 0.6017766125016,
+      "position_error_p95_m": 1.7695493954574122,
+      "position_error_max_m": 3.0157737018434285,
+      "mean_tilt_deg": 21.99400109434232,
+      "max_tilt_deg": 157.21029663085938,
+      "total_resets": 72,
+      "no_reset_fraction": 0.0,
+      "first_full_window_mean_environment_rmse_m": 1.0187802580843053,
+      "last_full_window_mean_environment_rmse_m": 1.125274390291521
+    },
+    {
+      "seed": 1,
+      "position_rmse_m": 1.1123793121501733,
+      "velocity_rmse_m_s": 0.5303543244939652,
+      "position_error_p95_m": 1.7288041834434449,
+      "position_error_max_m": 3.015822165312167,
+      "mean_tilt_deg": 21.625806726917393,
+      "max_tilt_deg": 171.99447631835938,
+      "total_resets": 55,
+      "no_reset_fraction": 0.0625,
+      "first_full_window_mean_environment_rmse_m": 1.0230178269139594,
+      "last_full_window_mean_environment_rmse_m": 1.103077395549445
+    },
+    {
+      "seed": 2,
+      "position_rmse_m": 1.1131634504571248,
+      "velocity_rmse_m_s": 0.559679925142366,
+      "position_error_p95_m": 1.7411350320688446,
+      "position_error_max_m": 3.014804665453335,
+      "mean_tilt_deg": 21.462311566404974,
+      "max_tilt_deg": 177.93246459960938,
+      "total_resets": 57,
+      "no_reset_fraction": 0.0625,
+      "first_full_window_mean_environment_rmse_m": 0.95984107123262,
+      "last_full_window_mean_environment_rmse_m": 1.1197100823272754
+    },
+    {
+      "seed": 3,
+      "position_rmse_m": 1.090383777674712,
+      "velocity_rmse_m_s": 0.547769427193248,
+      "position_error_p95_m": 1.7100730972838705,
+      "position_error_max_m": 3.019488422710971,
+      "mean_tilt_deg": 21.87394595432471,
+      "max_tilt_deg": 160.77137756347656,
+      "total_resets": 59,
+      "no_reset_fraction": 0.125,
+      "first_full_window_mean_environment_rmse_m": 1.0197259424140859,
+      "last_full_window_mean_environment_rmse_m": 1.08661749565292
+    },
+    {
+      "seed": 4,
+      "position_rmse_m": 1.1266804940837598,
+      "velocity_rmse_m_s": 0.5641692630867143,
+      "position_error_p95_m": 1.802042156697269,
+      "position_error_max_m": 3.0119325076498633,
+      "mean_tilt_deg": 21.89105489384755,
+      "max_tilt_deg": 175.57667541503906,
+      "total_resets": 60,
+      "no_reset_fraction": 0.0625,
+      "first_full_window_mean_environment_rmse_m": 1.0786225035920076,
+      "last_full_window_mean_environment_rmse_m": 1.124663667514012
+    }
+  ],
+  "across_evaluation_seeds": {
+    "position_rmse_m": {
+      "mean": 1.11085166373917,
+      "sample_sd": 0.013017331625680816,
+      "minimum": 1.090383777674712,
+      "maximum": 1.1266804940837598
+    },
+    "velocity_rmse_m_s": {
+      "mean": 0.5607499104835787,
+      "sample_sd": 0.026402706837713785,
+      "minimum": 0.5303543244939652,
+      "maximum": 0.6017766125016
+    },
+    "position_error_p95_m": {
+      "mean": 1.7503207729901682,
+      "sample_sd": 0.03609729323758262,
+      "minimum": 1.7100730972838705,
+      "maximum": 1.802042156697269
+    },
+    "position_error_max_m": {
+      "mean": 3.015564292593953,
+      "sample_sd": 0.0027053670278140347,
+      "minimum": 3.0119325076498633,
+      "maximum": 3.019488422710971
+    },
+    "mean_tilt_deg": {
+      "mean": 21.76942404716739,
+      "sample_sd": 0.21857364466786822,
+      "minimum": 21.462311566404974,
+      "maximum": 21.99400109434232
+    },
+    "max_tilt_deg": {
+      "mean": 168.69705810546876,
+      "sample_sd": 9.195881354404548,
+      "minimum": 157.21029663085938,
+      "maximum": 177.93246459960938
+    },
+    "total_resets": {
+      "mean": 60.6,
+      "sample_sd": 6.6558245169174945,
+      "minimum": 55.0,
+      "maximum": 72.0
+    },
+    "no_reset_fraction": {
+      "mean": 0.0625,
+      "sample_sd": 0.04419417382415922,
+      "minimum": 0.0,
+      "maximum": 0.125
+    },
+    "first_full_window_mean_environment_rmse_m": {
+      "mean": 1.0199975204473954,
+      "sample_sd": 0.04203083619283782,
+      "minimum": 0.95984107123262,
+      "maximum": 1.0786225035920076
+    },
+    "last_full_window_mean_environment_rmse_m": {
+      "mean": 1.1118686062670347,
+      "sample_sd": 0.016731865986462185,
+      "minimum": 1.08661749565292,
+      "maximum": 1.125274390291521
+    }
+  },
+  "interpretation": "Same trained checkpoint under five evaluation seeds. Mean and sample SD use five seed-level values, not time samples or laps as independent replicates. These do not measure training-seed variability. All-sample errors include reset states; report reset/no-reset statistics alongside them.",
+  "comparison_to_job71119": [
+    {
+      "seed": 0,
+      "small_position_rmse_m": 0.5201977056824061,
+      "large_position_rmse_m": 1.1116512843300805,
+      "difference_m": 0.5914535786476744,
+      "small_no_reset_fraction": 1.0,
+      "large_no_reset_fraction": 0.0,
+      "small_resets": 0,
+      "large_resets": 72
+    },
+    {
+      "seed": 1,
+      "small_position_rmse_m": 0.5568395894379726,
+      "large_position_rmse_m": 1.1123793121501733,
+      "difference_m": 0.5555397227122006,
+      "small_no_reset_fraction": 1.0,
+      "large_no_reset_fraction": 0.0625,
+      "small_resets": 0,
+      "large_resets": 55
+    },
+    {
+      "seed": 2,
+      "small_position_rmse_m": 0.49122237781284245,
+      "large_position_rmse_m": 1.1131634504571248,
+      "difference_m": 0.6219410726442824,
+      "small_no_reset_fraction": 1.0,
+      "large_no_reset_fraction": 0.0625,
+      "small_resets": 0,
+      "large_resets": 57
+    },
+    {
+      "seed": 3,
+      "small_position_rmse_m": 0.5132851180067003,
+      "large_position_rmse_m": 1.090383777674712,
+      "difference_m": 0.5770986596680118,
+      "small_no_reset_fraction": 1.0,
+      "large_no_reset_fraction": 0.125,
+      "small_resets": 0,
+      "large_resets": 59
+    },
+    {
+      "seed": 4,
+      "small_position_rmse_m": 0.5979830549428934,
+      "large_position_rmse_m": 1.1266804940837598,
+      "difference_m": 0.5286974391408664,
+      "small_no_reset_fraction": 0.9375,
+      "large_no_reset_fraction": 0.0625,
+      "small_resets": 1,
+      "large_resets": 60
+    }
+  ],
+  "comparison_caveat": "Matched initial teams and number of reference cycles, but154.62s versus51.54s exposure.3x path size and timing preserve speed while reducing acceleration and curvature to one-third. This does not isolate curvature alone. Auto-resets can break later team pairing."
+}

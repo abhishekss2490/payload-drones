@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Submit this project's training pipeline to Slurm via the shared launcher.
-# usage: scripts/slurm-train JOB_NAME WALL_TIME PIPELINE_NAME [train args...]
+# Submit this project's pinned environment to Slurm.
+# usage: scripts/slurm-train PIPELINE [train args...]
 set -euo pipefail
-if (( $# < 3 )); then
-    echo "usage: scripts/slurm-train JOB_NAME WALL_TIME PIPELINE_NAME [train args...]" >&2
-    exit 2
-fi
 PROJECT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-exec "$PROJECT/../robotics-common/scripts/slurm-train" "$1" "$2" "$PROJECT" "${@:3}"
+cd "$PROJECT"
+exec "$PROJECT/.venv/bin/python" -m robotics_common.slurm payload_drones "$@"

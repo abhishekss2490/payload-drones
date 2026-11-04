@@ -1,0 +1,16 @@
+{
+  "primary_amplitude_matches_original_csv_tolerance": 1e-10,
+  "phase_optimization_checked_by_direct_circular_reference_shifts_max_difference_m": 2.0401853055018737e-06,
+  "source_sha256": {
+    "server_results/model_1400_y_pair_job73168/seed_0/eight/all_teams.npz": "19b66d3e08d98707791c530d85e37de5d4312a205d544590f691464a30fc0b66",
+    "server_results/model_1400_y_pair_job73168/seed_0/y_only/all_teams.npz": "1fbc016b087cfcf91db5cc5af6022dcd2eccab63a59e0152c1c589907874b4ab",
+    "server_results/model_1400_y_pair_job73168/seed_1/eight/all_teams.npz": "3c3866ac2712ef024524df7c5156f82dd36ee7bcb046d4d73f3f76086d4a8385",
+    "server_results/model_1400_y_pair_job73168/seed_1/y_only/all_teams.npz": "f2b588bb5e87ca32c3d1541731f48c0ddf78587f60610ebeee9b076b34efb993",
+    "server_results/model_1400_y_pair_job73168/seed_2/eight/all_teams.npz": "a15eb46be3208c5d76d8e3a5eaf0016737661200d8bf0f46342170b3beebc230",
+    "server_results/model_1400_y_pair_job73168/seed_2/y_only/all_teams.npz": "1cfade04d0c30469e0bbfce0e0f93413dafd956b8a122b07aab4a321530b75c9",
+    "server_results/model_1400_y_pair_job73168/seed_3/eight/all_teams.npz": "e9c1462357866531a2643ba82243b3348e7266552ad92d8a85f2ada8774a69f8",
+    "server_results/model_1400_y_pair_job73168/seed_3/y_only/all_teams.npz": "d38f008ed44235fee204b20916f5f2f648e04f701ee9eda7d11d0c64994ca163",
+    "server_results/model_1400_y_pair_job73168/seed_4/eight/all_teams.npz": "91f21fca0b7f31dcab0855c948654be3c1a4507baaf2cbd0c0a1eabcfdf6a033",
+    "server_results/model_1400_y_pair_job73168/seed_4/y_only/all_teams.npz": "054dcc8b724a3a2b80f0231f313134f14628bf952e73b34dbbc6c5d5b4442bab"
+  }
+}

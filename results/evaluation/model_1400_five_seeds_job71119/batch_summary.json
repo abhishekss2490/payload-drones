@@ -1,0 +1,151 @@
+{
+  "status": "COMPLETE",
+  "expected_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "included_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "missing_seeds": [],
+  "rejected_seeds": {},
+  "evaluation_initial_teams": 80,
+  "checkpoint_sha256": "d2fce7251915b55228000b1f74f7596b87afccca7015f674919d4b3a5d05986a",
+  "per_seed": [
+    {
+      "seed": 0,
+      "position_rmse_m": 0.5201977056824061,
+      "velocity_rmse_m_s": 0.4481823499244742,
+      "position_error_p95_m": 0.8600724658319275,
+      "position_error_max_m": 1.117503624077691,
+      "mean_tilt_deg": 13.004146132370405,
+      "max_tilt_deg": 36.20708465576172,
+      "total_resets": 0,
+      "no_reset_fraction": 1.0,
+      "first_full_window_mean_environment_rmse_m": 0.3413856502450914,
+      "last_full_window_mean_environment_rmse_m": 0.5328661896372391
+    },
+    {
+      "seed": 1,
+      "position_rmse_m": 0.5568395894379726,
+      "velocity_rmse_m_s": 0.44871531888407107,
+      "position_error_p95_m": 0.9115427937346916,
+      "position_error_max_m": 1.3229847046274616,
+      "mean_tilt_deg": 10.921825898308764,
+      "max_tilt_deg": 22.016958236694336,
+      "total_resets": 0,
+      "no_reset_fraction": 1.0,
+      "first_full_window_mean_environment_rmse_m": 0.3427249906801808,
+      "last_full_window_mean_environment_rmse_m": 0.5713922702576085
+    },
+    {
+      "seed": 2,
+      "position_rmse_m": 0.49122237781284245,
+      "velocity_rmse_m_s": 0.44899576870684504,
+      "position_error_p95_m": 0.786495393301466,
+      "position_error_max_m": 1.3892266904160024,
+      "mean_tilt_deg": 13.54254388436632,
+      "max_tilt_deg": 24.720317840576172,
+      "total_resets": 0,
+      "no_reset_fraction": 1.0,
+      "first_full_window_mean_environment_rmse_m": 0.3287994096278877,
+      "last_full_window_mean_environment_rmse_m": 0.4919728651413747
+    },
+    {
+      "seed": 3,
+      "position_rmse_m": 0.5132851180067003,
+      "velocity_rmse_m_s": 0.44596334281847855,
+      "position_error_p95_m": 0.8088641459387651,
+      "position_error_max_m": 1.3310927903735663,
+      "mean_tilt_deg": 11.500802179451902,
+      "max_tilt_deg": 26.103759765625,
+      "total_resets": 0,
+      "no_reset_fraction": 1.0,
+      "first_full_window_mean_environment_rmse_m": 0.33401040156152917,
+      "last_full_window_mean_environment_rmse_m": 0.5216854154564369
+    },
+    {
+      "seed": 4,
+      "position_rmse_m": 0.5979830549428934,
+      "velocity_rmse_m_s": 0.4575497908589091,
+      "position_error_p95_m": 1.0735566323858077,
+      "position_error_max_m": 1.776992187319656,
+      "mean_tilt_deg": 13.923126389058721,
+      "max_tilt_deg": 80.04486083984375,
+      "total_resets": 1,
+      "no_reset_fraction": 0.9375,
+      "first_full_window_mean_environment_rmse_m": 0.34465238070868165,
+      "last_full_window_mean_environment_rmse_m": 0.6079338013090578
+    }
+  ],
+  "across_evaluation_seeds": {
+    "position_rmse_m": {
+      "mean": 0.535905569176563,
+      "sample_sd": 0.041972779335243404,
+      "minimum": 0.49122237781284245,
+      "maximum": 0.5979830549428934
+    },
+    "velocity_rmse_m_s": {
+      "mean": 0.4498813142385556,
+      "sample_sd": 0.004449332801706996,
+      "minimum": 0.44596334281847855,
+      "maximum": 0.4575497908589091
+    },
+    "position_error_p95_m": {
+      "mean": 0.8881062862385315,
+      "sample_sd": 0.11437994384846005,
+      "minimum": 0.786495393301466,
+      "maximum": 1.0735566323858077
+    },
+    "position_error_max_m": {
+      "mean": 1.3875599993628753,
+      "sample_sd": 0.24080550610879523,
+      "minimum": 1.117503624077691,
+      "maximum": 1.776992187319656
+    },
+    "mean_tilt_deg": {
+      "mean": 12.578488896711223,
+      "sample_sd": 1.3061945718528356,
+      "minimum": 10.921825898308764,
+      "maximum": 13.923126389058721
+    },
+    "max_tilt_deg": {
+      "mean": 37.818596267700194,
+      "sample_sd": 24.20820339203131,
+      "minimum": 22.016958236694336,
+      "maximum": 80.04486083984375
+    },
+    "total_resets": {
+      "mean": 0.2,
+      "sample_sd": 0.447213595499958,
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "no_reset_fraction": {
+      "mean": 0.9875,
+      "sample_sd": 0.02795084971874737,
+      "minimum": 0.9375,
+      "maximum": 1.0
+    },
+    "first_full_window_mean_environment_rmse_m": {
+      "mean": 0.3383145665646742,
+      "sample_sd": 0.006672992804595309,
+      "minimum": 0.3287994096278877,
+      "maximum": 0.34465238070868165
+    },
+    "last_full_window_mean_environment_rmse_m": {
+      "mean": 0.5451701083603434,
+      "sample_sd": 0.045165658497249184,
+      "minimum": 0.4919728651413747,
+      "maximum": 0.6079338013090578
+    }
+  },
+  "interpretation": "Same trained checkpoint under five evaluation seeds. Mean and sample SD use five seed-level values, not time samples or laps as independent replicates. These do not measure training-seed variability. All-sample errors include reset states; report reset/no-reset statistics alongside them."
+}

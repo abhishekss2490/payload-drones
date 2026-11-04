@@ -23,6 +23,7 @@ from payload_drones.rl.models import (
     N_AGENTS,
     MARLStudentModel,
     MARLTeacherModel,
+    SharedAgentGaussianDistribution,
     fold_agents,
     unfold_agents,
 )
@@ -31,26 +32,26 @@ from payload_drones.rl.models import (
 def _groups() -> dict[str, tuple[str, ...]]:
     return {
         "actor": ("policy", "payload_trajectory", "agent_dynamics"),
-        "critic": ("critic",),
+        "critic": ("critic", "payload_trajectory"),
         "student": ("policy", "payload_trajectory", "agent_history"),
         "teacher": ("policy", "payload_trajectory", "agent_dynamics"),
     }
 
 
-def _dist() -> dict[str, object]:
+def _dist(std_type: str = "log") -> dict[str, object]:
     return {
         "class_name": "payload_drones.rl.models.SharedAgentGaussianDistribution",
-        "init_std": 0.3,
-        "std_type": "scalar",
+        "init_std": 0.15,
+        "std_type": std_type,
     }
 
 
-def _teacher(obs: TensorDict) -> MARLTeacherModel:
-    return MARLTeacherModel(obs, _groups(), "actor", 12, distribution_cfg=_dist())
+def _teacher(obs: TensorDict, std_type: str = "log") -> MARLTeacherModel:
+    return MARLTeacherModel(obs, _groups(), "actor", 12, distribution_cfg=_dist(std_type))
 
 
-def _student(obs: TensorDict) -> MARLStudentModel:
-    return MARLStudentModel(obs, _groups(), "student", 12, distribution_cfg=_dist())
+def _student(obs: TensorDict, std_type: str = "log") -> MARLStudentModel:
+    return MARLStudentModel(obs, _groups(), "student", 12, distribution_cfg=_dist(std_type))
 
 
 @pytest.fixture(scope="module")
@@ -68,6 +69,7 @@ def test_1_teacher_student_and_critic_shapes(env_obs: TensorDict):
     teacher = _teacher(env_obs)
     student = _student(env_obs)
     critic = MARLTeacherModel(env_obs, _groups(), "critic", 1)
+    critic.bind_shared_trajectory_encoder(teacher.trajectory_encoder)
     assert tuple(teacher(env_obs).shape) == (4, 12)
     assert tuple(student(env_obs).shape) == (4, 12)
     assert tuple(critic(env_obs).shape) == (4, 1)
@@ -154,12 +156,17 @@ def test_6_distillation_targets_are_env_major_ego_rows(env_obs: TensorDict):
     assert torch.equal(target.reshape(-1, 8), teacher._agent_dynamics_latent(env_obs))
 
 
-def test_7_exploration_std_is_tied_after_optimizer_step(env_obs: TensorDict):
-    actor = _teacher(env_obs)
+@pytest.mark.parametrize("std_type", ["scalar", "log"])
+def test_7_exploration_std_is_tied_after_optimizer_step(env_obs: TensorDict, std_type: str):
+    actor = _teacher(env_obs, std_type)
     optimizer = torch.optim.Adam(actor.parameters(), lr=1e-3)
     actions = actor(env_obs, stochastic_output=True)
     std_before = actor.output_std.detach().view(-1, N_AGENTS, ACTION_DIM_PER_AGENT)
-    assert actor.distribution.std_param.shape == (4,)
+    name = "std_param" if std_type == "scalar" else "log_std_param"
+    parameter = getattr(actor.distribution, name)
+    assert parameter.shape == (4,)
+    torch.testing.assert_close(std_before, torch.full_like(std_before, 0.15))
+    parameter_before = parameter.detach().clone()
     assert torch.equal(std_before[:, 0], std_before[:, 1])
     assert torch.equal(std_before[:, 1], std_before[:, 2])
     loss = -actor.get_output_log_prob(actions).mean()
@@ -168,16 +175,28 @@ def test_7_exploration_std_is_tied_after_optimizer_step(env_obs: TensorDict):
     optimizer.step()
     actor(env_obs, stochastic_output=True)
     std_after = actor.output_std.detach().view(-1, N_AGENTS, ACTION_DIM_PER_AGENT)
+    assert torch.isfinite(parameter.grad).all()
+    assert not torch.equal(parameter_before, parameter.detach())
+    assert (std_after > 0).all()
     assert torch.equal(std_after[:, 0], std_after[:, 1])
     assert torch.equal(std_after[:, 1], std_after[:, 2])
 
 
-def test_8_phase2_load_freezes_everything_except_tcn(env_obs: TensorDict):
-    teacher = _teacher(env_obs)
-    student = _student(env_obs)
+@pytest.mark.parametrize("std_type", ["scalar", "log"])
+def test_8_phase2_load_freezes_everything_except_tcn(env_obs: TensorDict, std_type: str):
+    teacher = _teacher(env_obs, std_type)
+    student = _student(env_obs, std_type)
+    name = "std_param" if std_type == "scalar" else "log_std_param"
+    with torch.no_grad():
+        values = torch.tensor([0.1, 0.15, 0.2, 0.25])
+        getattr(teacher.distribution, name).copy_(values.log() if std_type == "log" else values)
     storage = RolloutStorage("distillation", 4, 1, env_obs, [12], "cpu")
     algorithm = DynamicsDistillation(student, teacher, storage, learning_rate=1e-3)
     algorithm.load({"actor_state_dict": teacher.state_dict()}, load_cfg=None, strict=True)
+    torch.testing.assert_close(
+        getattr(student.distribution, name), getattr(teacher.distribution, name), rtol=0, atol=0
+    )
+    assert not getattr(student.distribution, name).requires_grad
     assert all(not p.requires_grad for p in student.trajectory_encoder.parameters())
     assert all(not p.requires_grad for p in student.mlp.parameters())
     assert all(p.requires_grad for p in student.adaptation_module.parameters())
@@ -214,3 +233,31 @@ def test_9_gpu_8192_forward_and_backward_without_oom():
     (teacher(obs).square().mean() + student(obs).square().mean()).backward()
     torch.cuda.synchronize(device)
     assert torch.cuda.max_memory_allocated(device) > 0
+
+
+@pytest.mark.parametrize("std_type", ["scalar", "log"])
+def test_10_distribution_checkpoint_round_trip(tmp_path, std_type: str):
+    distribution = SharedAgentGaussianDistribution(12, init_std=0.15, std_type=std_type)
+    name = "std_param" if std_type == "scalar" else "log_std_param"
+    values = torch.tensor([0.02, 0.1, 0.4, 0.8])
+    with torch.no_grad():
+        getattr(distribution, name).copy_(values.log() if std_type == "log" else values)
+    mean = torch.zeros(2, 12)
+    distribution.update(mean)
+    torch.testing.assert_close(distribution.std, values.repeat(3).expand_as(mean))
+    assert set(distribution.state_dict()) == {name}
+    checkpoint = tmp_path / "distribution.pt"
+    torch.save(distribution.state_dict(), checkpoint)
+    restored = SharedAgentGaussianDistribution(12, init_std=0.15, std_type=std_type)
+    restored.load_state_dict(torch.load(checkpoint, weights_only=True), strict=True)
+    restored.update(mean)
+    torch.testing.assert_close(restored.std, distribution.std, rtol=0, atol=0)
+    torch.testing.assert_close(restored.entropy, distribution.entropy, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("std_type", ["scalar", "log"])
+def test_11_fixed_std_remains_nonlearnable(std_type: str):
+    distribution = SharedAgentGaussianDistribution(
+        12, init_std=0.15, std_type=std_type, learn_std=False
+    )
+    assert all(not p.requires_grad for p in distribution.parameters())

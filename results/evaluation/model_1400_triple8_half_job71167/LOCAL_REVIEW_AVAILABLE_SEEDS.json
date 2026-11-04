@@ -1,0 +1,102 @@
+{
+  "locally_verified_seeds": [
+    {
+      "seed": 0,
+      "position_rmse_m": 0.5873942631882718,
+      "velocity_rmse_m_s": 0.15775125077027646,
+      "total_resets": 1,
+      "survivors": 15,
+      "video_environment": {
+        "environment": 0,
+        "position_rmse_m": 0.5400455337009727,
+        "velocity_rmse_m_s": 0.13017534840027756,
+        "position_error_p95_m": 1.1815177797387808,
+        "position_error_max_m": 1.2617060926943482,
+        "mean_tilt_deg": 10.47527796487219,
+        "max_tilt_deg": 21.30331802368164,
+        "resets": 0,
+        "no_reset_during_observation": true,
+        "first_reset_time_s": null
+      },
+      "video_metadata": {
+        "width": 1920,
+        "height": 1080,
+        "r_frame_rate": "50/1",
+        "duration": "309.240000",
+        "nb_frames": "15462"
+      },
+      "missing_files": []
+    },
+    {
+      "seed": 1,
+      "position_rmse_m": 0.591676777040354,
+      "velocity_rmse_m_s": 0.14500388390521918,
+      "total_resets": 0,
+      "survivors": 16,
+      "video_environment": {
+        "environment": 0,
+        "position_rmse_m": 0.519451505934556,
+        "velocity_rmse_m_s": 0.1414600006598911,
+        "position_error_p95_m": 1.1534686550560445,
+        "position_error_max_m": 1.2385866885558163,
+        "mean_tilt_deg": 8.924312022879834,
+        "max_tilt_deg": 15.697745323181152,
+        "resets": 0,
+        "no_reset_during_observation": true,
+        "first_reset_time_s": null
+      },
+      "video_metadata": {
+        "width": 1920,
+        "height": 1080,
+        "r_frame_rate": "50/1",
+        "duration": "309.240000",
+        "nb_frames": "15462"
+      },
+      "missing_files": []
+    },
+    {
+      "seed": 2,
+      "position_rmse_m": 0.5866210152825382,
+      "velocity_rmse_m_s": 0.1628330785580176,
+      "total_resets": 3,
+      "survivors": 13,
+      "video_environment": {
+        "environment": 0,
+        "position_rmse_m": 0.5877173986715665,
+        "velocity_rmse_m_s": 0.14095108561546504,
+        "position_error_p95_m": 1.2105197950653337,
+        "position_error_max_m": 1.2789585934971714,
+        "mean_tilt_deg": 11.319509130917828,
+        "max_tilt_deg": 23.309852600097656,
+        "resets": 0,
+        "no_reset_during_observation": true,
+        "first_reset_time_s": null
+      },
+      "video_metadata": {
+        "width": 1920,
+        "height": 1080,
+        "r_frame_rate": "50/1",
+        "duration": "309.240000",
+        "nb_frames": "15462"
+      },
+      "missing_files": [
+        "summary.json",
+        "termination_flags.npz",
+        "video_states.npz",
+        "per_environment.csv",
+        "render_model_0000.mjb"
+      ]
+    }
+  ],
+  "missing_seed_directories": [
+    3,
+    4
+  ],
+  "server_report_available": true,
+  "all_five_independently_verified": false,
+  "video_decode_checked_seeds": [
+    0,
+    1,
+    2
+  ]
+}

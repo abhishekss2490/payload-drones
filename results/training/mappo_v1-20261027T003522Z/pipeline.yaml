@@ -1,0 +1,32 @@
+version: 1
+pipeline: Mjlab-PayloadTransport-RMA
+run_name: mappo_v1-20261027T003522Z
+status: running
+log_root: logs
+wandb:
+  id: w9skna1w
+  project: payload-drones
+git:
+  commit: a1954c2b8d77e6e0e2131e999c41f93a90cc0147
+  branch: ppo/per-agent-clip
+  robotics_common: 62ed0f3ccb5fa748cdd4ad3db40fd37b539eb26b
+phase_args:
+- --phases.teacher.agent.max-iterations
+- '6000'
+- --phases.teacher.agent.experiment-name
+- mappo_v1
+phases:
+- name: teacher
+  task_id: Mjlab-PayloadTransport-RMA-Phase1
+  directory: phases/01-teacher
+  planned_iterations: 6000
+  completed_iterations: 0
+  status: running
+  checkpoint: null
+- name: distill
+  task_id: Mjlab-PayloadTransport-RMA-Phase2
+  directory: phases/02-distill
+  planned_iterations: 500
+  completed_iterations: 0
+  status: pending
+  checkpoint: null

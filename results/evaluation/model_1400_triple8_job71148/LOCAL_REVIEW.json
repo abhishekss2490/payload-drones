@@ -1,0 +1,117 @@
+{
+  "seeds": [
+    {
+      "seed": 0,
+      "rmse": 1.1116512843300805,
+      "resets": 72,
+      "survivors": 0,
+      "failed_within_first_51_54s": 16,
+      "video_environment": {
+        "environment": 0,
+        "position_rmse_m": 1.070252746474209,
+        "velocity_rmse_m_s": 0.5609266951664983,
+        "position_error_p95_m": 1.5802629182262702,
+        "position_error_max_m": 3.0071600505829603,
+        "mean_tilt_deg": 23.023181804328846,
+        "max_tilt_deg": 97.87696075439453,
+        "resets": 3,
+        "no_reset_during_observation": false,
+        "first_reset_time_s": 25.29
+      },
+      "video_frames": 7731
+    },
+    {
+      "seed": 1,
+      "rmse": 1.1123793121501733,
+      "resets": 55,
+      "survivors": 1,
+      "failed_within_first_51_54s": 14,
+      "video_environment": {
+        "environment": 0,
+        "position_rmse_m": 1.0651287645633873,
+        "velocity_rmse_m_s": 0.4671067760247869,
+        "position_error_p95_m": 1.8607554721781807,
+        "position_error_max_m": 3.009413935194165,
+        "mean_tilt_deg": 18.434658750162384,
+        "max_tilt_deg": 47.28208923339844,
+        "resets": 5,
+        "no_reset_during_observation": false,
+        "first_reset_time_s": 30.05
+      },
+      "video_frames": 7731
+    },
+    {
+      "seed": 2,
+      "rmse": 1.1131634504571248,
+      "resets": 57,
+      "survivors": 1,
+      "failed_within_first_51_54s": 15,
+      "video_environment": {
+        "environment": 0,
+        "position_rmse_m": 1.1777197020771462,
+        "velocity_rmse_m_s": 0.5703295371064189,
+        "position_error_p95_m": 1.785061937725201,
+        "position_error_max_m": 2.9945914104157003,
+        "mean_tilt_deg": 20.296024131205435,
+        "max_tilt_deg": 115.78595733642578,
+        "resets": 5,
+        "no_reset_during_observation": false,
+        "first_reset_time_s": 25.71
+      },
+      "video_frames": 7731
+    },
+    {
+      "seed": 3,
+      "rmse": 1.090383777674712,
+      "resets": 59,
+      "survivors": 2,
+      "failed_within_first_51_54s": 14,
+      "video_environment": {
+        "environment": 0,
+        "position_rmse_m": 0.9655446072929813,
+        "velocity_rmse_m_s": 0.47672990784573166,
+        "position_error_p95_m": 1.6139877962806215,
+        "position_error_max_m": 3.0137533520634077,
+        "mean_tilt_deg": 21.32982501662921,
+        "max_tilt_deg": 129.039794921875,
+        "resets": 2,
+        "no_reset_during_observation": false,
+        "first_reset_time_s": 25.66
+      },
+      "video_frames": 7731
+    },
+    {
+      "seed": 4,
+      "rmse": 1.1266804940837598,
+      "resets": 60,
+      "survivors": 1,
+      "failed_within_first_51_54s": 15,
+      "video_environment": {
+        "environment": 0,
+        "position_rmse_m": 1.1610143437297342,
+        "velocity_rmse_m_s": 0.61600782282664,
+        "position_error_p95_m": 1.8871755010278262,
+        "position_error_max_m": 3.0069333035141614,
+        "mean_tilt_deg": 22.115423155724695,
+        "max_tilt_deg": 175.57667541503906,
+        "resets": 6,
+        "no_reset_during_observation": false,
+        "first_reset_time_s": 25.240000000000002
+      },
+      "video_frames": 7731
+    }
+  ],
+  "termination_counts": {
+    "time_out": 0,
+    "payload_ground_contact": 0,
+    "any_quad_ground_contact": 102,
+    "payload_far_from_goal": 145,
+    "any_quad_tumbling": 52,
+    "quad_collision": 6,
+    "cable_overextension": 0,
+    "nan_detection": 0
+  },
+  "total_resets": 303,
+  "survivors": 5,
+  "failed_within_first_51_54s": 74
+}

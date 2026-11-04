@@ -37,8 +37,8 @@ extend-select = ["I"]
 dev = ["pytest"]
 
 [tool.uv.sources]
-robotics-common = { path = "../robotics-common", editable = true }
-rsl-rl-lib = { git = "https://github.com/varadVaidya/rsl_rl.git", rev = "e3886a49257f53939711ed9898125bd989138d49" }
+robotics-common = { git = "https://github.com/varadVaidya/robotics-common.git", rev = "62ed0f3ccb5fa748cdd4ad3db40fd37b539eb26b" }
+rsl-rl-lib = { git = "https://github.com/varadVaidya/rsl_rl.git", rev = "71030d9bdce215a4e1085426f4a0d1f8ed80184d" }
 torch = { index = "pytorch-cu129" }
 
 [[tool.uv.index]]

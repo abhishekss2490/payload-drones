@@ -43,9 +43,8 @@ class PayloadTrajectoryCommandCfg(CommandTermCfg):
     # Trajectory difficulty is pinned at rho = 0.25 rather than performance-gated.
     # The gated curriculum never advanced past rho_min (the first baseline stayed
     # at 0.05 the whole run, so it only ever practiced the slowest trajectories).
-    # rho sets the trajectory's peak *acceleration* as rho*(twr-1)*g; the 1.5 m/s
-    # speed cap (max_payload_speed) still bounds peak speed on top, so we accept
-    # whatever speed rho=0.25 yields under that cap. Setting min==max pins it:
+    # rho supplies the acceleration request rho*(twr-1)*g. The scheduled speed
+    # cap additionally bounds the trajectory's peak speed. Setting min==max pins rho:
     # `rho = rho_min + rand*(ceiling - rho_min)` collapses to rho_min, and the
     # promote/demote clamps to [0.25, 0.25].
     rho_min: float = 0.25
@@ -68,6 +67,10 @@ class PayloadTrajectoryCommandCfg(CommandTermCfg):
     num_loops: float = 1.0
     ramp_fraction: float = 0.1
     max_payload_speed: float = 1.5
+    # Ramp the cap for newly generated episodes; existing references stay continuous.
+    # Zero iterations disables the ramp and uses max_payload_speed immediately.
+    initial_payload_speed: float = 0.5
+    speed_anneal_iterations: int = 750
 
     # Reset/task bring-up.  The command owns spawn so the physical state and
     # reference can never be sampled independently.
@@ -77,13 +80,8 @@ class PayloadTrajectoryCommandCfg(CommandTermCfg):
     spawn_angular_velocity_perturbation: float = 0.05
     cable_spawn_slack_ratio: float = 0.95
 
-    # A cable-coupled team must learn stationary suspension before every
-    # episode asks for translation.  This probability anneals linearly in PPO
-    # iterations and is independently CLI-overridable for the no-warm-up run.
-    # No hover warm-up by default. The stationary-hover mixture was designed for
-    # the slow-trajectory (rho=0.05) regime "learn to hover before tracking"; with
-    # rho pinned at 0.25 the target is fast tracking, so stationary episodes are
-    # unlike the real task and add machinery for little gain. Set >0 to re-enable.
+    # Every default episode follows a moving reference; the speed cap provides
+    # the warm-up. The optional stationary mixture remains independently configurable.
     hover_fraction_initial: float = 0.0
     hover_fraction_final: float = 0.0
     hover_anneal_iterations: int = 500
@@ -116,14 +114,22 @@ class PayloadTrajectoryCommand(CommandTerm):
         super().__init__(cfg, env)
         if cfg.observation_horizon < 200:
             raise ValueError("observation_horizon must be at least the 200-waypoint preview")
-        if cfg.max_payload_speed <= 0:
-            raise ValueError("max_payload_speed must be positive")
+        if not math.isfinite(cfg.max_payload_speed) or cfg.max_payload_speed <= 0:
+            raise ValueError("max_payload_speed must be finite and positive")
+        if not math.isfinite(cfg.initial_payload_speed) or cfg.initial_payload_speed <= 0:
+            raise ValueError("initial_payload_speed must be finite and positive")
+        if cfg.speed_anneal_iterations < 0:
+            raise ValueError("speed_anneal_iterations must be non-negative")
+        if cfg.speed_anneal_iterations > 0 and cfg.initial_payload_speed > cfg.max_payload_speed:
+            raise ValueError("initial_payload_speed must not exceed max_payload_speed during the ramp")
         if not 0.0 <= cfg.hover_fraction_initial <= 1.0:
             raise ValueError("hover_fraction_initial must lie in [0, 1]")
         if not 0.0 <= cfg.hover_fraction_final <= 1.0:
             raise ValueError("hover_fraction_final must lie in [0, 1]")
-        if cfg.hover_anneal_iterations < 0 or cfg.steps_per_iteration <= 0:
-            raise ValueError("hover annealing lengths must be non-negative")
+        if cfg.steps_per_iteration <= 0:
+            raise ValueError("steps_per_iteration must be positive")
+        if cfg.hover_anneal_iterations < 0:
+            raise ValueError("hover_anneal_iterations must be non-negative")
         if not 0.0 < cfg.cable_spawn_slack_ratio <= 1.0:
             raise ValueError("cable_spawn_slack_ratio must lie in (0, 1]")
 
@@ -158,6 +164,7 @@ class PayloadTrajectoryCommand(CommandTerm):
         self.metrics["velocity_error"] = torch.zeros(env.num_envs, device=env.device)
         self.metrics["team_twr"] = torch.zeros(env.num_envs, device=env.device)
         self.metrics["hover_episode"] = torch.zeros(env.num_envs, device=env.device)
+        self.metrics["speed_cap"] = torch.zeros(env.num_envs, device=env.device)
 
     def _buf_idx(self) -> torch.Tensor:
         """Current reference index; episode_step is measured in physics steps."""
@@ -262,7 +269,7 @@ class PayloadTrajectoryCommand(CommandTerm):
         # the desired true peak speed, then compose the existing timing law in
         # one generation pass.
         curriculum_omega = torch.sqrt(max_acceleration / max_ddp)
-        cap_omega = cfg.max_payload_speed / max_dp
+        cap_omega = self._current_speed_cap() / max_dp
         omega = torch.minimum(curriculum_omega, cap_omega)
         total_time = s_final / (omega * (1.0 - cfg.ramp_fraction))
         t = torch.arange(self.N_buf, device=self.device, dtype=torch.float32) * self.traj_dt
@@ -301,6 +308,17 @@ class PayloadTrajectoryCommand(CommandTerm):
         self.velocity_ref[env_ids] = 0.0
         self.acceleration_ref[env_ids] = 0.0
         self.rho_actual[env_ids] = 0.0
+
+    def _current_speed_cap(self) -> float:
+        """Linear ramp using environment steps, preserved by the runner checkpoint."""
+        cfg = self.cfg
+        if cfg.speed_anneal_iterations == 0:
+            return cfg.max_payload_speed
+        ramp_steps = cfg.speed_anneal_iterations * cfg.steps_per_iteration
+        progress = min(max(self._env.common_step_counter / ramp_steps, 0.0), 1.0)
+        return cfg.initial_payload_speed + progress * (
+            cfg.max_payload_speed - cfg.initial_payload_speed
+        )
 
     def _current_hover_fraction(self) -> float:
         cfg = self.cfg
@@ -378,6 +396,7 @@ class PayloadTrajectoryCommand(CommandTerm):
         self.metrics["velocity_error"] = vel_error
         self.metrics["team_twr"] = self.team_twr.clone()
         self.metrics["hover_episode"] = self.is_hover_episode.float()
+        self.metrics["speed_cap"].fill_(self._current_speed_cap())
         self.cumulative_sq_error += pos_error.square()
         self.step_count += 1
 

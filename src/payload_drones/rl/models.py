@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import weakref
+
 import torch
 from rsl_rl.models import MLPModel
 from rsl_rl.modules import MLP, EmpiricalNormalization, GaussianDistribution, HiddenState
@@ -42,14 +44,26 @@ class SharedAgentGaussianDistribution(GaussianDistribution):
         if output_dim % ACTION_DIM_PER_AGENT:
             raise ValueError(f"output_dim={output_dim} is not a multiple of {ACTION_DIM_PER_AGENT}")
         super().__init__(output_dim, **kwargs)
-        if self.std_type != "scalar":
-            raise ValueError("SharedAgentGaussianDistribution supports std_type='scalar' only")
-        init_std = float(kwargs.get("init_std", 1.0))
-        self.std_param = torch.nn.Parameter(torch.full((ACTION_DIM_PER_AGENT,), init_std))
+        # Keep the base class's initialization, learn_std flag and checkpoint keys.
+        parameter_name = "std_param" if self.std_type == "scalar" else "log_std_param"
+        parameter = getattr(self, parameter_name)
+        setattr(
+            self,
+            parameter_name,
+            nn.Parameter(
+                parameter[:ACTION_DIM_PER_AGENT].detach().clone(),
+                requires_grad=parameter.requires_grad,
+            ),
+        )
         self.n_agents = output_dim // ACTION_DIM_PER_AGENT
 
     def _tiled_std(self) -> torch.Tensor:
-        return self.std_param.clamp(self.std_range[0], self.std_range[1]).repeat(self.n_agents)
+        # Match rsl-rl's existing numerical safeguards; no new exploration bounds.
+        if self.std_type == "scalar":
+            std = self.std_param.clamp(*self.std_range)
+        else:
+            std = self.log_std_param.clamp(*self.log_std_range).exp()
+        return std.repeat(self.n_agents)
 
     def update(self, mlp_output: torch.Tensor) -> None:
         self._distribution = torch.distributions.Normal(mlp_output, self._tiled_std())
@@ -66,9 +80,14 @@ class _MARLModelBase(MLPModel):
     is_centralized_critic: bool
 
     def _init_layout(self, obs: TensorDict, obs_groups: dict[str, list[str]], obs_set: str) -> None:
-        self.is_centralized_critic = tuple(obs_groups[obs_set]) == ("critic",)
+        self.is_centralized_critic = obs_set == "critic"
         if self.is_centralized_critic:
+            if set(obs_groups[obs_set]) != {"critic", "payload_trajectory"}:
+                raise ValueError("critic requires the critic and payload_trajectory observation groups")
+            if obs["critic"].ndim != 2 or obs["payload_trajectory"].shape[-1] != 1200:
+                raise ValueError("critic requires a state vector and the shared 1200-dim preview")
             self.critic_dim = obs["critic"].shape[-1]
+            self._trajectory_encoder_ref: weakref.ReferenceType[TrajectoryEncoder] | None = None
             return
         required = {"policy", "payload_trajectory"}
         missing = required - set(obs_groups[obs_set])
@@ -83,7 +102,7 @@ class _MARLModelBase(MLPModel):
 
     def _get_latent_dim(self) -> int:
         if self.is_centralized_critic:
-            return self.critic_dim
+            return self.critic_dim + self.traj_latent_dim
         return POLICY_DIM + self.traj_latent_dim + self.dyn_latent_dim
 
     def _shared_trajectory_latent(self, trajectory: torch.Tensor) -> torch.Tensor:
@@ -114,8 +133,28 @@ class _MARLModelBase(MLPModel):
         with torch.no_grad():
             last.bias.fill_(hover_action)
 
+    def bind_shared_trajectory_encoder(self, encoder: TrajectoryEncoder) -> None:
+        """Borrow the actor-owned encoder without registering or freezing its weights."""
+        if not self.is_centralized_critic:
+            raise ValueError("only the centralized critic borrows a trajectory encoder")
+        if encoder.out_proj.out_features != self.traj_latent_dim:
+            raise ValueError("actor and critic trajectory latent dimensions must match")
+        # A weak reference is not an nn.Module child: no duplicate optimizer/state_dict
+        # entries, device moves or gradient clipping through critic.parameters().
+        self._trajectory_encoder_ref = weakref.ref(encoder)
+
+    def _raw_critic_latent(self, obs: TensorDict) -> torch.Tensor:
+        encoder = self._trajectory_encoder_ref() if self._trajectory_encoder_ref else None
+        if encoder is None:
+            raise RuntimeError("bind the actor's trajectory encoder before evaluating the critic")
+        # Recompute from this observation, including critic-only GAE bootstrapping.
+        # no_grad blocks only the value-loss path; actor evaluation still trains E.
+        with torch.no_grad():
+            z_traj = encoder(obs["payload_trajectory"])
+        return torch.cat((obs["critic"], z_traj), dim=-1)
+
     def _critic_latent(self, obs: TensorDict) -> torch.Tensor:
-        return self.obs_normalizer(obs["critic"])
+        return self.obs_normalizer(self._raw_critic_latent(obs))
 
     def forward(
         self,
@@ -212,6 +251,8 @@ class MARLTeacherModel(_MARLModelBase):
             distribution_cfg=distribution_cfg,
         )
         if self.is_centralized_critic:
+            if obs_normalization:
+                self.obs_normalizer = EmpiricalNormalization(self._get_latent_dim())
             return
         self.trajectory_encoder = TrajectoryEncoder(
             input_dim=obs["payload_trajectory"].shape[-1],
@@ -259,7 +300,8 @@ class MARLTeacherModel(_MARLModelBase):
         if not self.obs_normalization:
             return
         with torch.no_grad():
-            self.obs_normalizer.update(self._raw_actor_latent(obs))
+            latent = self._raw_critic_latent(obs) if self.is_centralized_critic else self._raw_actor_latent(obs)
+            self.obs_normalizer.update(latent)
 
 
 class MARLStudentModel(_MARLModelBase):
@@ -301,6 +343,8 @@ class MARLStudentModel(_MARLModelBase):
             distribution_cfg=distribution_cfg,
         )
         if self.is_centralized_critic:
+            if obs_normalization:
+                self.obs_normalizer = EmpiricalNormalization(self._get_latent_dim())
             return
         expected_history_dim = N_AGENTS * history_length * self.sa_dim
         if obs["agent_history"].shape[-1] != expected_history_dim:
@@ -371,4 +415,5 @@ class MARLStudentModel(_MARLModelBase):
         if not self.obs_normalization:
             return
         with torch.no_grad():
-            self.obs_normalizer.update(self._raw_actor_latent(obs))
+            latent = self._raw_critic_latent(obs) if self.is_centralized_critic else self._raw_actor_latent(obs)
+            self.obs_normalizer.update(latent)

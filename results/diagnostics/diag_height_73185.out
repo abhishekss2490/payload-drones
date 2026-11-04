@@ -1,0 +1,23 @@
+robotics_common: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/deps/robotics-common/src/robotics_common/__init__.py
+rsl_rl: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/deps/rsl-rl/rsl_rl/__init__.py
+payload_drones: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/frozen-source/src/payload_drones/__init__.py
+Preflight passed: Python /home/kjishnu/varadmandar/abhishek-payload/archive-2026-10/payload-drones/.venv/bin/python, Torch 2.13.0+cu129, source a1954c2b8d77e6e0e2131e999c41f93a90cc0147, model_1400.
+Results: /home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/evaluation/model_1400_diag_height_job73185
+Starting h0_10_0
+Starting h0_10_5
+Starting h0_10_-5
+Starting h0_18_0
+Starting h0_18_5
+Starting h0_18_-5
+Starting h1_10_0
+Starting h1_10_5
+Starting h1_10_-5
+Starting h1_18_0
+Starting h1_18_5
+Starting h1_18_-5
+Signed retained fraction = (z_up - z_down) / 0.10 m. At release it is 1. Zero is convergence between perturbed states, not absolute tracking accuracy.
+seed 0, phase 10s: valid at +3s 16/16, median retained 0.5198651552200317, team 0 retained 0.5687665939331055
+seed 0, phase 18s: valid at +3s 16/16, median retained 0.07263779640197754, team 0 retained 0.0743257999420166
+seed 1, phase 10s: valid at +3s 16/16, median retained 0.5338579416275024, team 0 retained 0.439605712890625
+seed 1, phase 18s: valid at +3s 16/16, median retained 0.11446535587310791, team 0 retained -0.047441720962524414
+

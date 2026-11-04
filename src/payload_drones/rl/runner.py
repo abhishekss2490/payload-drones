@@ -42,6 +42,18 @@ class MARLPhase1Runner(MjlabOnPolicyRunner):
     migration and ``common_step_counter`` restore) then restores the curriculum.
     """
 
+    def __init__(
+        self,
+        env: VecEnv,
+        train_cfg: dict,
+        log_dir: str | None = None,
+        device: str = "cpu",
+    ) -> None:
+        # Keep an iteration equal to the actual PPO rollout length, including CLI overrides.
+        term = env.unwrapped.command_manager.get_term("payload_pose")
+        term.cfg.steps_per_iteration = train_cfg["num_steps_per_env"]
+        super().__init__(env, train_cfg, log_dir, device)
+
     def save(self, path: str, infos=None) -> None:
         env_state = {
             "common_step_counter": self.env.unwrapped.common_step_counter,
@@ -69,6 +81,11 @@ class MARLPhase1Runner(MjlabOnPolicyRunner):
             _load_trajectory_curriculum(
                 self.env.unwrapped, infos["env_state"].get("trajectory_curriculum")
             )
+            # The wrapper generated its first references before checkpoint loading.
+            # Rebuild them at the restored cap instead of resuming on the initial cap.
+            term = self.env.unwrapped.command_manager.get_term("payload_pose")
+            if term.cfg.speed_anneal_iterations > 0:
+                self.env.reset()
         return infos
 
 

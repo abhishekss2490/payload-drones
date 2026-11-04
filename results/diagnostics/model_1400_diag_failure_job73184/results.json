@@ -1,0 +1,27 @@
+[
+  {
+    "team": 7,
+    "archive_step": 2421,
+    "replay_step": 2421,
+    "labels": [
+      "payload_far_from_goal"
+    ],
+    "position_rms_m": 0.0
+  },
+  {
+    "team": 12,
+    "archive_step": 2552,
+    "replay_step": 2552,
+    "labels": [
+      "any_quad_ground_contact"
+    ],
+    "position_rms_m": 0.0
+  },
+  {
+    "team": 8,
+    "archive_step": null,
+    "replay_step": null,
+    "labels": [],
+    "position_rms_m": 0.0
+  }
+]

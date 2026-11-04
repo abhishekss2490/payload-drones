@@ -1,0 +1,23 @@
+robotics_common: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/deps/robotics-common/src/robotics_common/__init__.py
+rsl_rl: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/deps/rsl-rl/rsl_rl/__init__.py
+payload_drones: /home/kjishnu/varadmandar/abhishek-payload/evaluation/payload-small-y-pair-v3/frozen-source/src/payload_drones/__init__.py
+Preflight passed: Python /home/kjishnu/varadmandar/abhishek-payload/archive-2026-10/payload-drones/.venv/bin/python, Torch 2.13.0+cu129, source a1954c2b8d77e6e0e2131e999c41f93a90cc0147, model_1400.
+Results: /home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/evaluation/model_1400_y_pair_job73168
+Starting seed 0 / eight
+Starting seed 0 / y_only
+Starting seed 1 / eight
+Starting seed 1 / y_only
+Starting seed 2 / eight
+Starting seed 2 / y_only
+Starting seed 3 / eight
+Starting seed 3 / y_only
+Starting seed 4 / eight
+Starting seed 4 / y_only
+Model 1400. Target y amplitude = 0.400 m. Median within-team changes use eligible pairs only.
+seed | eligible | eight/y-only amplitude (m) | paired change (m) | no-reset teams eight/y-only | eight RMSE new/archive (m)
+0 | 16/16 | 0.051/0.074 | 0.024 | 16/16 | 0.520/0.520
+1 | 16/16 | 0.043/0.070 | 0.024 | 16/16 | 0.557/0.557
+2 | 16/16 | 0.052/0.077 | 0.024 | 16/16 | 0.491/0.491
+3 | 16/16 | 0.053/0.079 | 0.026 | 16/16 | 0.513/0.513
+4 | 15/16 | 0.045/0.076 | 0.023 | 15/15 | 0.598/0.598
+

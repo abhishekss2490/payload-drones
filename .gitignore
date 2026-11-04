@@ -17,3 +17,29 @@ wandb/
 outputs/
 checkpoints/
 *.egg-info/
+
+# Local research material: not needed for training, never pushed to the cluster
+Papers/
+R_markdowns/
+REPO_MEMORY.md
+docs/
+
+# Local research, handoffs and agent memory (keep outside published snapshot)
+/research-audits/
+/control_diagnoses/
+/evaluation-plans/
+/server-pull/
+/notes/
+/memory/
+/outputs/
+AGENTS.md
+NEXT_CHAT_CONTEXT.txt
+CHAT_HANDOFF*
+*.local.*
+.env
+.env.*
+!.env.example
+# Curated models/ and results/ are intentionally versioned.
+# Rendered videos and simulator viewer exports remain local.
+*.mp4
+*.mjb

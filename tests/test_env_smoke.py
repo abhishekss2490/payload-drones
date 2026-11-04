@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 import torch
 import warp as wp
@@ -13,7 +15,7 @@ wp.config.kernel_cache_dir = "/tmp/payload-drones-warp-cache"
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from payload_drones.mdp.observations import agent_dynamics, payload_trajectory, policy, team_probe
-from payload_drones.mdp.rewards import body_rate_penalty, reward_terms
+from payload_drones.mdp.rewards import reward_terms
 from payload_drones.mdp.terminations import (
     any_quad_ground_contact,
     payload_ground_contact,
@@ -316,61 +318,96 @@ def test_5_inactive_agent_motor_force_is_exactly_zero():
     assert torch.count_nonzero(force[:, 0]) > 0
 
 
-def test_6_reward_sanity_includes_bounded_survival_economics():
-    """The positional kernels have the stated near/far behaviour.
+def test_6_composite_reward_matches_hand_calculated_cases():
+    """Check position gating, moving references, attitude, rates and quaternion sign."""
+    env = _env(7)
+    try:
+        env.reset(seed=73)
+        payload = env.scene["payload"]
+        command = env.command_manager.get_term("payload_pose")
+        # A nonzero reference velocity catches accidental rewards for absolute stillness.
+        command.velocity_ref.zero_()
+        command.velocity_ref[:, :, 0] = 0.5
+        reference = command.command.clone()
+        state = payload.data.default_root_state.clone()
+        state[:, :3] = reference[:, :3] + env.scene.env_origins
+        state[:, 3:7] = reference[:, 3:7]
+        state[:, 7:10] = reference[:, 7:10]
+        state[:, 10:13] = 0.0
+        state[1:3, 0] += 0.5
+        state[2, 7:10] = 0.0
+        state[3, 0] += 3.0
+        state[4, 3:7] = torch.tensor([math.cos(0.75), 0.0, 0.0, math.sin(0.75)])
+        state[5, 10] = 2.0
+        command._quat_ref[6] *= -1.0  # q and -q represent the same orientation.
+        payload.write_root_state_to_sim(state)
+        env.sim.forward()
 
-    Section 9's stronger claim that *total* reward at 3 m position error is
-    near zero cannot follow from section 6: orientation, velocity, and angular
-    velocity terms contribute 0.50 at that state.  This test pins the specified
-    kernels and documents the numerical contradiction rather than hiding it.
-    """
-    env = _env(2)
-    env.reset()
-    payload = env.scene["payload"]
-    command = env.command_manager.get_term("payload_pose")
-    state = payload.data.default_root_state.clone()
-    state[:, :3] = command.command[:, :3] + env.scene.env_origins
-    state[:, 3:7] = command.quat_command
-    state[:, 7:] = 0
-    payload.write_root_state_to_sim(state)
-    env.sim.forward()
-    near = sum(term.weight * term.func(env, **term.params) for term in reward_terms.values() if term.weight > 0)
-    state[:, 0] += 3.0
-    payload.write_root_state_to_sim(state)
-    env.sim.forward()
-    far_pos = reward_terms["payload_position_tracking"].func(env, scale=1.5)
-    far_fine = reward_terms["payload_position_fine"].func(env, std=0.1)
-    far = sum(term.weight * term.func(env, **term.params) for term in reward_terms.values() if term.weight > 0)
-    # Tracking terms sum to 1.0 and a non-terminated live state adds 0.1.
-    assert torch.allclose(near, torch.full_like(near, 1.10), atol=1e-4)
-    # The coarse norm kernel keeps a small but NONZERO reward at 3 m (heavy tail:
-    # exp(-ln10 * 3 / 1.5) = 0.01) -- that is the whole point of the shape. The
-    # Gaussian fine term is dead there, as intended.
-    assert torch.allclose(far_pos, torch.full_like(far_pos, 0.01), atol=1e-3)
-    assert (far_fine < 1e-12).all()
-    # Non-position terms (orientation, velocity, ang-vel, alive) contribute 0.60;
-    # the coarse position tail adds 0.30 * 0.01 = 0.003 on top.
-    assert torch.allclose(far, torch.full_like(far, 0.603), atol=1e-3)
+        cfg = env.reward_manager.get_term_cfg("payload_tracking")
+        actual = cfg.func(env, **cfg.params)
+        # Independent arithmetic from the approved formulation, before dt scaling.
+        expected = torch.tensor([1.0, 0.3275993021, 0.2170345376, 0.00625, 0.55, 0.8875, 1.0])
+        torch.testing.assert_close(actual, expected, rtol=1e-5, atol=2e-6)
+        assert actual.shape == (env.num_envs,)
+        assert torch.isfinite(actual).all()
+        assert ((actual >= 0.0) & (actual <= 1.0)).all()
+        assert [name for name, term in reward_terms.items() if term.weight > 0] == [
+            "payload_tracking"
+        ]
+        assert "is_alive" not in reward_terms
+    finally:
+        env.close()
 
 
-def test_reward_economics_make_every_bounded_live_step_nonnegative():
-    env = _env(2)
-    env.reset()
-    for i in range(3):
-        quad = env.scene[f"quad_{i}"]
-        velocity = torch.zeros(env.num_envs, 6, device=env.device)
-        velocity[:, 3:] = 1.0e6
-        quad.write_root_link_velocity_to_sim(velocity)
-    env.sim.forward()
-    assert torch.equal(body_rate_penalty(env), torch.full((env.num_envs,), 25.0))
+def test_reward_safety_costs_are_bounded_and_scaled_once():
+    env = _env(3)
+    try:
+        env.reset(seed=73)
+        # Pair distances produce normalized separation costs 0, 1/3 and 1.
+        offsets = torch.tensor([
+            [[0.0, 0.0, 3.0], [1.0, 0.0, 3.0], [2.0, 0.0, 3.0]],
+            [[0.0, 0.0, 3.0], [0.25, 0.0, 3.0], [0.5, 0.0, 3.0]],
+            [[0.0, 0.0, 3.0], [0.0, 0.0, 3.0], [0.0, 0.0, 3.0]],
+        ])
+        for i in range(3):
+            quad = env.scene[f"quad_{i}"]
+            pose = quad.data.root_link_pose_w.clone()
+            pose[:, :3] = env.scene.env_origins + offsets[:, i]
+            quad.write_root_link_pose_to_sim(pose)
+        env.sim.forward()
 
-    # Worst values under clipped actions and bounded shaping.  Positive
-    # tracking terms are omitted, making this a conservative lower bound.
-    lower_bound = 0.10 - 0.002 * 25.0 - 0.002 * 4.0 - 0.01 * 0.5 - 0.004
-    assert lower_bound > 0.0
-    assert reward_terms["action_rate"].weight == 0.0
-    assert reward_terms["body_rate_penalty"].weight == 0.0
-    assert reward_terms["crash_penalty"].weight * 0.01 == -2.0
+        # Set the geometric slack proxy to zero, one and three slack cables.
+        payload = env.scene["payload"]
+        for i in range(3):
+            quad = env.scene[f"quad_{i}"]
+            hook = quad.data.site_pos_w[:, quad.find_sites(("hook",))[0][0]]
+            attach = payload.data.site_pos_w[:, payload.find_sites((f"attach_{i}",))[0][0]]
+            offsets_i = torch.tensor([-0.1, 0.1 if i == 0 else -0.1, 0.1])
+            env.team_state.cable_length[:, i] = (attach - hook).norm(dim=-1) + offsets_i
+
+        expected_costs = torch.tensor([0.0, 1.0 / 3.0, 1.0])
+        for name in ("quad_proximity_penalty", "cable_slack_penalty"):
+            cfg = env.reward_manager.get_term_cfg(name)
+            torch.testing.assert_close(cfg.func(env, **cfg.params), expected_costs)
+        task_cfg = env.reward_manager.get_term_cfg("payload_tracking")
+        task = task_cfg.func(env, **task_cfg.params)
+        env.termination_manager.terminated.zero_()
+        env.termination_manager.time_outs.zero_()
+        assert env.step_dt == pytest.approx(0.01)
+        live = env.reward_manager.compute(env.step_dt).clone()
+        torch.testing.assert_close(live, 0.01 * (task - 0.009 * expected_costs))
+
+        # Pure timeout has no failure cost; real failures cost -2, including at timeout.
+        env.termination_manager.time_outs[:] = torch.tensor([True, False, True])
+        env.termination_manager.terminated[:] = torch.tensor([False, True, True])
+        finished = env.reward_manager.compute(env.step_dt).clone()
+        torch.testing.assert_close(finished - live, torch.tensor([0.0, -2.0, -2.0]))
+        gamma = payload_rma_phase1_cfg().algorithm.gamma
+        assert 0.01 * 0.009 / (1.0 - gamma) == pytest.approx(0.018)
+        assert reward_terms["action_rate"].weight == 0.0
+        assert reward_terms["body_rate_penalty"].weight == 0.0
+    finally:
+        env.close()
 
 
 def test_contact_terminations_match_simulated_contacts():
@@ -402,76 +439,39 @@ def test_contact_terminations_match_simulated_contacts():
     assert quad_collision(env).tolist() == [False, False, True]
 
 
-def test_reward_curriculum_holds_wide_then_tightens_after_1000_iterations():
+def test_reward_parameters_remain_fixed_after_former_curriculum_milestones():
     env = _env(2)
-    env.reset()
+    try:
+        env.reset()
+        assert env.cfg.curriculum == {}
 
-    # Coarse position + orientation use the heavy-tailed norm kernel (scale, held
-    # constant, no curriculum). Only the Gaussian std terms are curriculum-driven.
-    def snapshot() -> dict[str, float]:
-        return {
-            name: env.reward_manager.get_term_cfg(name).params["std"]
-            for name in (
-                "payload_position_fine",
-                "payload_velocity_tracking",
-                "payload_ang_vel_penalty",
-            )
-        }
+        def snapshot():
+            return {
+                name: (cfg.weight, dict(cfg.params))
+                for name in env.reward_manager.active_terms
+                for cfg in [env.reward_manager.get_term_cfg(name)]
+            }
 
-    def coarse_scales() -> dict[str, float]:
-        return {
-            name: env.reward_manager.get_term_cfg(name).params["scale"]
-            for name in ("payload_position_tracking", "payload_orientation_tracking")
-        }
-
-    initial = {
-        "payload_position_fine": 0.20,
-        "payload_velocity_tracking": 1.0,
-        "payload_ang_vel_penalty": 2.0,
-    }
-    assert snapshot() == initial
-    assert coarse_scales() == {"payload_position_tracking": 1.5, "payload_orientation_tracking": 1.5}
-
-    # Curriculum does NOT start until 1000 iterations: at 500 nothing has moved.
-    env.common_step_counter = 500 * 256
-    env.curriculum_manager.compute()
-    assert snapshot() == initial
-    assert env.reward_manager.get_term_cfg("action_rate").weight == 0.0
-    assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == 0.0
-
-    # First tightening at 1000; the coarse norm-kernel scales never move.
-    env.common_step_counter = 1000 * 256
-    env.curriculum_manager.compute()
-    assert snapshot() == {
-        "payload_position_fine": 0.15,
-        "payload_velocity_tracking": 0.75,
-        "payload_ang_vel_penalty": 1.50,
-    }
-    assert coarse_scales() == {"payload_position_tracking": 1.5, "payload_orientation_tracking": 1.5}
-    assert env.reward_manager.get_term_cfg("action_rate").weight == -0.001
-    assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == -0.001
-
-    # Final tightening at 1500, held for the last 500 of the 2000-iter run.
-    env.common_step_counter = 1500 * 256
-    env.curriculum_manager.compute()
-    assert snapshot() == {
-        "payload_position_fine": 0.10,
-        "payload_velocity_tracking": 0.50,
-        "payload_ang_vel_penalty": 1.00,
-    }
-    assert env.reward_manager.get_term_cfg("action_rate").weight == -0.002
-    assert env.reward_manager.get_term_cfg("body_rate_penalty").weight == -0.002
+        initial = snapshot()
+        for iteration in (500, 1000, 1500, 2000, 10000):
+            env.common_step_counter = iteration * 256
+            env.curriculum_manager.compute()
+            assert snapshot() == initial
+    finally:
+        env.close()
 
 
 def test_sweep_parameters_are_direct_config_overrides():
     env_cfg = make_payload_env_cfg(num_envs=2)
     command_cfg = env_cfg.commands["payload_pose"]
-    # Coarse position + orientation use the heavy-tailed norm kernel (scale=1.5),
-    # held constant -- neither has a tightening curriculum.
-    assert env_cfg.rewards["payload_position_tracking"].params["scale"] == 1.5
-    assert env_cfg.rewards["payload_orientation_tracking"].params["scale"] == 1.5
-    assert "payload_position_tracking_std" not in env_cfg.curriculum
-    assert "payload_orientation_tracking_std" not in env_cfg.curriculum
+    assert env_cfg.rewards["payload_tracking"].params == {
+        "position_scale": 1.5,
+        "position_fine_std": 0.5,
+        "velocity_std": 0.5,
+        "orientation_scale": 1.5,
+        "angular_velocity_std": 2.0,
+    }
+    assert env_cfg.curriculum == {}
     # No hover warm-up in the baseline (stationary episodes are unlike the
     # rho=0.25 fast-tracking target); every episode is a moving trajectory.
     assert command_cfg.hover_fraction_initial == 0.0
@@ -480,7 +480,7 @@ def test_sweep_parameters_are_direct_config_overrides():
     assert command_cfg.rho_min == 0.25 and command_cfg.rho_max == 0.25
 
     rl_cfg = payload_rma_phase1_cfg()
-    assert rl_cfg.max_iterations == 2000
+    assert rl_cfg.max_iterations == 6000
     assert rl_cfg.algorithm.learning_rate == 1.0e-3
     assert rl_cfg.algorithm.num_learning_epochs == 5
     assert rl_cfg.algorithm.num_mini_batches == 16
@@ -587,7 +587,8 @@ def test_13_payload_trajectory_speed_cap_is_respected():
     env.reset(seed=2718)
     command = env.command_manager.get_term("payload_pose")
     peak_speed = command.velocity_ref.norm(dim=-1).amax()
-    assert peak_speed <= 1.05 * command.cfg.max_payload_speed
+    assert command._current_speed_cap() == 0.5
+    assert peak_speed <= 1.05 * command._current_speed_cap()
 
 
 def test_14_gpu_cable_reset_stays_finite_for_400_random_steps():

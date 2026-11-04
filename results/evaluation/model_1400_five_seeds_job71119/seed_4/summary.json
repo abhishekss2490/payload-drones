@@ -1,0 +1,324 @@
+{
+  "checkpoint": "/home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/Mjlab-PayloadTransport-RMA/mappo_v1-20261027T003522Z/phases/01-teacher/model_1400.pt",
+  "checkpoint_sha256": "d2fce7251915b55228000b1f74f7596b87afccca7015f674919d4b3a5d05986a",
+  "smoke_test_untrained": false,
+  "commit": "a1954c2b8d77e6e0e2131e999c41f93a90cc0147",
+  "branch": "ppo/per-agent-clip",
+  "evaluator_sha256": "86db1053ebc73b23caba8ed54157ceec261bdd55cdfcc21a5d7e8f1d31cf2ff9",
+  "upstream_commit": "1facd56c7386853df8b6df398c5e0635e2f8567c",
+  "upstream_loop_blob": "72945db101b9f8f5db4409dad01de5863915344c",
+  "arguments": {
+    "checkpoint": "/home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/Mjlab-PayloadTransport-RMA/mappo_v1-20261027T003522Z/phases/01-teacher/model_1400.pt",
+    "smoke": false,
+    "max_steps": 5154,
+    "no_video": false,
+    "expected_sha256": "d2fce7251915b55228000b1f74f7596b87afccca7015f674919d4b3a5d05986a",
+    "num_envs": 16,
+    "video_env": 0,
+    "frame_skip": 2,
+    "out_dir": "/home/kjishnu/varadmandar/abhishek-payload/payload-drones-mappo/logs/evaluation/model_1400_five_seeds_job71119/seed_4",
+    "seed": 4,
+    "period": 8.0,
+    "amp_x": 0.75,
+    "amp_y": 0.4,
+    "z": 1.25,
+    "ramp": 2.0,
+    "refresh": 5.0,
+    "plot_window": 40.0,
+    "plot_every": 30.0
+  },
+  "steps": 5154,
+  "completed_requested_steps": true,
+  "simulation_seconds": 51.54,
+  "control_dt_s": 0.01,
+  "position_rmse_m": 0.5979830548364797,
+  "mean_tilt_deg": 13.923126383006231,
+  "env_resets": 1,
+  "per_environment_resets": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0
+  ],
+  "completed_eight_second_windows": 6,
+  "per_lap_mean_environment_rmse_m": [
+    0.34465235471725464,
+    0.5270581245422363,
+    0.5695222616195679,
+    0.5959187150001526,
+    0.6047022342681885,
+    0.6079338192939758
+  ],
+  "policy_state_unchanged": true,
+  "verified_saved_settings": {
+    "verified_fields": [
+      "commands.payload_pose",
+      "episode_length_s",
+      "decimation",
+      "physics_timestep",
+      "termination_names",
+      "obs_groups",
+      "actor",
+      "clip_actions",
+      "randomization.arm_sampling_mode",
+      "randomization.base_arm_range",
+      "randomization.arm_relative_spread",
+      "randomization.loaded_twr_floor",
+      "randomization.loaded_twr_ceiling",
+      "randomization.scale_cfg",
+      "failure_probability",
+      "termination.time_out",
+      "termination.payload_ground_contact",
+      "termination.any_quad_ground_contact",
+      "termination.payload_far_from_goal",
+      "termination.any_quad_tumbling",
+      "termination.quad_collision",
+      "termination.cable_overextension",
+      "termination.nan_detection",
+      "reward.payload_tracking",
+      "reward.action_rate",
+      "reward.body_rate_penalty",
+      "reward.quad_proximity_penalty",
+      "reward.cable_slack_penalty",
+      "reward.crash_penalty"
+    ],
+    "env_sha256": "7a07db1a2efdbeef6a12c8744eae3361c5c063a758c052b649cfb41175b21585",
+    "agent_sha256": "ce84ba2b0962ed6cbef80c0df4b076020cc17b48f5c95d4f76ea1a1d23b017f1"
+  },
+  "initial_team": {
+    "payload_mass": [
+      0.12445837259292603,
+      0.09079432487487793,
+      0.13196301460266113,
+      0.5137842893600464,
+      0.10988092422485352,
+      0.03993085026741028,
+      0.0680970847606659,
+      0.131962388753891,
+      0.19530773162841797,
+      0.03816044330596924,
+      0.020532160997390747,
+      0.15696430206298828,
+      0.06350094079971313,
+      0.10037708282470703,
+      0.17268329858779907,
+      0.10606354475021362
+    ],
+    "cable_length": [
+      [
+        0.5089235901832581,
+        0.5370020270347595,
+        0.698963463306427
+      ],
+      [
+        0.7325550317764282,
+        0.5693694353103638,
+        0.7603772878646851
+      ],
+      [
+        0.6361085176467896,
+        0.6863892078399658,
+        0.5401782989501953
+      ],
+      [
+        0.5455803275108337,
+        0.719520092010498,
+        0.711125373840332
+      ],
+      [
+        0.7983405590057373,
+        0.6303281188011169,
+        0.6244778633117676
+      ],
+      [
+        0.6075851917266846,
+        0.527860164642334,
+        0.6008294820785522
+      ],
+      [
+        0.5741774439811707,
+        0.7039799690246582,
+        0.7575840950012207
+      ],
+      [
+        0.7740644216537476,
+        0.5602226853370667,
+        0.7293424606323242
+      ],
+      [
+        0.6165621280670166,
+        0.5577041506767273,
+        0.5152236223220825
+      ],
+      [
+        0.6271726489067078,
+        0.5542346835136414,
+        0.6288244724273682
+      ],
+      [
+        0.7269113063812256,
+        0.5498108863830566,
+        0.6117637753486633
+      ],
+      [
+        0.5599836707115173,
+        0.7479354739189148,
+        0.5429912805557251
+      ],
+      [
+        0.602138340473175,
+        0.6358212828636169,
+        0.6652074456214905
+      ],
+      [
+        0.7261583805084229,
+        0.6075562834739685,
+        0.7985656261444092
+      ],
+      [
+        0.5858502388000488,
+        0.6482177972793579,
+        0.7059721350669861
+      ],
+      [
+        0.6095708012580872,
+        0.5579785704612732,
+        0.7563478350639343
+      ]
+    ],
+    "margin": [
+      2.028395891189575,
+      2.21549916267395,
+      2.4851646423339844,
+      2.1737661361694336,
+      2.225224494934082,
+      2.7764358520507812,
+      2.746415376663208,
+      2.07440447807312,
+      2.109194278717041,
+      2.767108917236328,
+      2.5669779777526855,
+      2.6172046661376953,
+      2.3203377723693848,
+      2.0457382202148438,
+      2.246446132659912,
+      2.088622808456421
+    ],
+    "active_mask": [
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ]
+    ]
+  },
+  "environment_config_seed": 4,
+  "initial_manifest_sha256": "795f7a2dc715ce9e776406628de6260607e4847b0e632e720bc4dffb51c03e61",
+  "runtime": {
+    "torch": "2.13.0+cu129",
+    "mujoco": "3.11.0",
+    "numpy": "2.5.2",
+    "cuda": "12.9",
+    "gpu": "NVIDIA RTX A5000"
+  },
+  "seed_protocol": "Explicit env_cfg.seed before construction; actor loading and RNG draw order otherwise unchanged",
+  "video_rendering": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50.0,
+    "appearance": "Native model and floor; gold reference/target, cyan payload trail only; no drone trails; no numerical HUD",
+    "camera": "Fixed three-quarter view; azimuth125 elevation-30 distance4.5, lookat origin+[0,0,z+.30]",
+    "shadows": false,
+    "state_archive": "video_states.npz and render_model_*.mjb"
+  },
+  "metric_convention": "Upstream continuous script: all post-step samples, including post-auto-reset states; report reset counts alongside errors.",
+  "lap_convention": "Consecutive period-sized time windows from t=0, including startup ramp; last partial window excluded from per-lap list.",
+  "comparison_status": "Matches repository script defaults and supplied 5154-step duration; lucky-vortex-44 actual evaluation CLI/video not found in committed files."
+}

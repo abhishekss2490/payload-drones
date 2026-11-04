@@ -1,0 +1,134 @@
+[
+  {
+    "seed": 0,
+    "phase": 10,
+    "cm": -5,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.1989940490740878e-07,
+    "cable_projection_max_error_N": 2.0041681132454414e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 0,
+    "phase": 10,
+    "cm": 0,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.1989940490740878e-07,
+    "cable_projection_max_error_N": 2.0041681132454414e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 0,
+    "phase": 10,
+    "cm": 5,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.1989940490740878e-07,
+    "cable_projection_max_error_N": 2.0041681132454414e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 0,
+    "phase": 18,
+    "cm": -5,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.1989940490740878e-07,
+    "cable_projection_max_error_N": 2.0041681132454414e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 0,
+    "phase": 18,
+    "cm": 0,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.1989940490740878e-07,
+    "cable_projection_max_error_N": 2.0041681132454414e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 0,
+    "phase": 18,
+    "cm": 5,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.1989940490740878e-07,
+    "cable_projection_max_error_N": 2.0041681132454414e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 1,
+    "phase": 10,
+    "cm": -5,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.4070614124127587e-07,
+    "cable_projection_max_error_N": 1.169701567604875e-06,
+    "motor_upper_entries": 2,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 1,
+    "phase": 10,
+    "cm": 0,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.4070614124127587e-07,
+    "cable_projection_max_error_N": 1.169701567604875e-06,
+    "motor_upper_entries": 1,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 1,
+    "phase": 10,
+    "cm": 5,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.4070614124127587e-07,
+    "cable_projection_max_error_N": 1.169701567604875e-06,
+    "motor_upper_entries": 1,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 1,
+    "phase": 18,
+    "cm": -5,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.4070614124127587e-07,
+    "cable_projection_max_error_N": 1.169701567604875e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 1,
+    "phase": 18,
+    "cm": 0,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.4070614124127587e-07,
+    "cable_projection_max_error_N": 1.169701567604875e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  },
+  {
+    "seed": 1,
+    "phase": 18,
+    "cm": 5,
+    "finite": true,
+    "no_resets": true,
+    "command_map_max_error_N": 2.4070614124127587e-07,
+    "cable_projection_max_error_N": 1.169701567604875e-06,
+    "motor_upper_entries": 0,
+    "motor_entries": 57600
+  }
+]
